@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuthStore } from "./store/authStore";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PoweredBy from "./components/PoweredBy";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
@@ -63,6 +64,9 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+
+      {/* Global badge — renders on every page */}
+      <PoweredBy />
     </BrowserRouter>
   );
 }
