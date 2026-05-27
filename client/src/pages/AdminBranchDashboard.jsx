@@ -3,183 +3,278 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
 
-const CATEGORY_COLORS = {
-  "Engine Repair":   "#3B8FFF",
-  "Electrical":      "#FFC107",
-  "Body Work":       "#1DB87A",
-  "Transmission":    "#CE93D8",
-  "AC & Cooling":    "#00BCD4",
-  "General Service": "#FF7043",
+/* ─── Design tokens ─────────────────────────────────────────────────── */
+const C = {
+  bg:      "#09090E", surface: "#111119", card: "#16161F",
+  elev:    "#1E1E2C", border:  "#23232F", border2: "#1A1A25",
+  text:    "#E2E2EE", muted:   "#60607A", dim:     "#30304A",
+  blue:    "#4C70F5", blueL:  "#7A98F8",
+  green:   "#10C090", greenL: "#4DD8B6",
+  amber:   "#E8A000", amberL: "#FFC033",
+  red:     "#E04848",
 };
 
-function StatCard({ label, value, sub, icon }) {
+/* ─── Category config ───────────────────────────────────────────────── */
+const CAT = {
+  "Engine Repair":   { bar: "#4C70F5", label: "#7A98F8" },
+  "Electrical":      { bar: "#E8A000", label: "#FFC033" },
+  "Body Work":       { bar: "#10C090", label: "#4DD8B6" },
+  "Transmission":    { bar: "#9070F0", label: "#B89AF8" },
+  "AC & Cooling":    { bar: "#18C8DF", label: "#6DDDE8" },
+  "General Service": { bar: "#E87018", label: "#FF9A50" },
+};
+
+/* ─── KPI card ─────────────────────────────────────────────────────── */
+function KpiCard({ label, value, unit, accent = C.blue }) {
   return (
-    <div className="stat-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <span className="stat-label">{label}</span>
-        <span style={{ fontSize: "18px" }}>{icon}</span>
-      </div>
-      <div className="stat-value">{value}</div>
-      {sub && <div className="stat-sub">{sub}</div>}
+    <div style={{
+      background: C.card, border: `1px solid ${C.border}`,
+      borderRadius: "4px", padding: "16px 18px",
+      borderLeft: `3px solid ${accent}`,
+      transition: "border-color 0.15s",
+    }}>
+      <p style={{
+        fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
+        textTransform: "uppercase", color: C.muted, marginBottom: "10px",
+        fontFamily: "'IBM Plex Sans', sans-serif",
+      }}>{label}</p>
+      <p style={{
+        fontSize: "26px", fontWeight: "800", color: C.text, lineHeight: 1,
+        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
+      }}>{value}</p>
+      {unit && (
+        <p style={{
+          fontSize: "10px", color: C.dim, marginTop: "4px",
+          fontWeight: "600", letterSpacing: "0.10em", textTransform: "uppercase",
+        }}>{unit}</p>
+      )}
     </div>
   );
 }
 
+/* ─── Stat definitions ──────────────────────────────────────────────── */
+const STATS = [
+  { key: "technicianCount",       label: "Technicians",     unit: "",        accent: C.blue,  fmt: v => v },
+  { key: "totalEntries",          label: "Job Cards",       unit: "total",   accent: C.blueL, fmt: v => Number(v).toLocaleString("en-IN") },
+  { key: "totalHours",            label: "Hours Worked",    unit: "hrs",     accent: C.green, fmt: v => Number(v).toLocaleString("en-IN") },
+  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",unit: "hrs avg", accent: C.greenL,fmt: v => v },
+  { key: "totalLabour",           label: "Total Labour",    unit: "",        accent: C.amber, fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
+  { key: "totalIncentives",       label: "Incentives Paid", unit: "",        accent: C.amberL,fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
+  { key: "totalLeaveDays",        label: "Leave Days",      unit: "days",    accent: C.dim,   fmt: v => v },
+];
+
+/* ─── Main ──────────────────────────────────────────────────────────── */
 export default function AdminBranchDashboard() {
   const navigate = useNavigate();
-  const [branches, setBranches] = useState([]);
-  const [selectedBranch, setSelectedBranch] = useState("");
-  const [stats, setStats] = useState(null);
-  const [loadingBranches, setLoadingBranches] = useState(true);
-  const [loadingStats, setLoadingStats] = useState(false);
+  const [branches, setBranches]   = useState([]);
+  const [selected, setSelected]   = useState("");
+  const [stats, setStats]         = useState(null);
+  const [loadingB, setLoadingB]   = useState(true);
+  const [loadingS, setLoadingS]   = useState(false);
 
-  // Fetch branch list on mount
   useEffect(() => {
-    const fetchBranches = async () => {
-      try {
-        const res = await api.get("/api/admin/branches");
-        setBranches(res.data);
-        if (res.data.length > 0) setSelectedBranch(res.data[0]);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingBranches(false);
-      }
-    };
-    fetchBranches();
+    api.get("/api/admin/branches")
+      .then(r => { setBranches(r.data); if (r.data.length) setSelected(r.data[0]); })
+      .catch(console.error)
+      .finally(() => setLoadingB(false));
   }, []);
 
-  // Fetch stats when branch changes
   useEffect(() => {
-    if (!selectedBranch) return;
-    const fetchStats = async () => {
-      setLoadingStats(true);
-      setStats(null);
-      try {
-        const res = await api.get(`/api/admin/branch/${encodeURIComponent(selectedBranch)}`);
-        setStats(res.data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingStats(false);
-      }
-    };
-    fetchStats();
-  }, [selectedBranch]);
+    if (!selected) return;
+    setLoadingS(true); setStats(null);
+    api.get(`/api/admin/branch/${encodeURIComponent(selected)}`)
+      .then(r => setStats(r.data))
+      .catch(console.error)
+      .finally(() => setLoadingS(false));
+  }, [selected]);
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--navy)" }}>
+    <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: "'IBM Plex Sans', sans-serif", color: C.text }}>
       <Navbar />
-      <div style={{ padding: "20px 16px", maxWidth: "700px", margin: "0 auto" }}>
 
-        {/* Header */}
-        <div className="fade-up" style={{ marginBottom: "20px" }}>
-          <h1 style={{ fontSize: "22px", fontWeight: "700" }}>Branch Dashboard</h1>
-          <p style={{ color: "var(--steel)", fontSize: "13px", marginTop: "4px" }}>
-            Select a branch to view performance overview
+      <div style={{ padding: "28px 16px 48px", maxWidth: "960px", margin: "0 auto" }}>
+
+        {/* ── Page header ── */}
+        <div style={{ marginBottom: "32px", borderBottom: `1px solid ${C.border2}`, paddingBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
+            <h1 style={{
+              fontSize: "28px", fontWeight: "800", margin: 0,
+              fontFamily: "'Barlow Condensed', sans-serif",
+              letterSpacing: "0.05em", textTransform: "uppercase",
+            }}>Branch Dashboard</h1>
+            {selected && !loadingS && stats && (
+              <span style={{
+                fontSize: "11px", color: C.muted, fontWeight: "600",
+                letterSpacing: "0.10em", textTransform: "uppercase",
+              }}>
+                {selected} · {stats.technicianCount} Technician{stats.technicianCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <p style={{ color: C.muted, fontSize: "13px", marginTop: "6px" }}>
+            Performance overview by branch
           </p>
         </div>
 
-        {/* Branch Selector */}
-        <div className="fade-up" style={{ marginBottom: "24px", animationDelay: "0.05s" }}>
-          {loadingBranches ? (
-            <div style={{ color: "var(--steel)", fontSize: "14px" }}>Loading branches…</div>
-          ) : branches.length === 0 ? (
-            <div className="al-card" style={{ color: "var(--steel)", textAlign: "center", padding: "32px" }}>
-              No branches found. Technicians need to complete their profile setup first.
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {branches.map(b => (
-                <button
-                  key={b}
-                  onClick={() => setSelectedBranch(b)}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "1px solid",
-                    borderColor: selectedBranch === b ? "var(--blue)" : "var(--border)",
-                    background: selectedBranch === b ? "rgba(30,111,217,0.15)" : "var(--navy-mid)",
-                    color: selectedBranch === b ? "var(--blue-light)" : "var(--steel)",
-                    fontWeight: selectedBranch === b ? "600" : "400",
-                    fontSize: "14px",
-                    cursor: "pointer",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                    transition: "all 0.15s",
-                  }}
-                >
+        {/* ── Branch selector ── */}
+        {loadingB ? (
+          <p style={{ color: C.dim, fontSize: "12px", letterSpacing: "0.12em" }}>LOADING BRANCHES…</p>
+        ) : branches.length === 0 ? (
+          <div style={{
+            background: C.card, border: `1px solid ${C.border}`, borderRadius: "4px",
+            padding: "48px", textAlign: "center", color: C.muted, fontSize: "14px",
+          }}>
+            No branches found. Technicians need to complete profile setup first.
+          </div>
+        ) : (
+          <div style={{
+            display: "flex", gap: "6px", overflowX: "auto",
+            paddingBottom: "4px", marginBottom: "32px",
+            WebkitOverflowScrolling: "touch", scrollbarWidth: "none",
+          }}>
+            {branches.map(b => {
+              const active = selected === b;
+              return (
+                <button key={b} onClick={() => setSelected(b)} style={{
+                  padding: "7px 18px",
+                  border: `1px solid ${active ? C.blue : C.border}`,
+                  background: active ? "rgba(76,112,245,0.10)" : "transparent",
+                  color: active ? C.blueL : C.muted,
+                  fontWeight: active ? "700" : "500",
+                  fontSize: "11px", letterSpacing: "0.12em",
+                  textTransform: "uppercase", cursor: "pointer",
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                  borderRadius: "3px", whiteSpace: "nowrap",
+                  flexShrink: 0, transition: "all 0.15s",
+                }}>
                   {b}
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Stats section */}
-        {selectedBranch && (
-          loadingStats ? (
-            <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--steel)" }}>
-              Loading stats…
+        {/* ── Stats section ── */}
+        {selected && (
+          loadingS ? (
+            <div style={{ textAlign: "center", padding: "80px 0", color: C.dim }}>
+              <div style={{
+                width: "1px", height: "32px", background: C.blue,
+                margin: "0 auto 16px", opacity: 0.6,
+              }} />
+              <p style={{ fontSize: "11px", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+                Loading {selected}…
+              </p>
             </div>
           ) : stats ? (
             <>
-              {/* View Technicians CTA */}
-              <div className="fade-up" style={{ marginBottom: "16px", animationDelay: "0.08s" }}>
+              {/* ── Branch action row ── */}
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                alignItems: "center", marginBottom: "20px", gap: "12px",
+                flexWrap: "wrap",
+              }}>
+                <div style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  textTransform: "uppercase", color: C.muted,
+                  display: "flex", alignItems: "center", gap: "10px",
+                }}>
+                  <div style={{ width: "3px", height: "14px", background: C.blue, borderRadius: "1px" }} />
+                  Performance Metrics
+                </div>
                 <button
-                  className="al-btn"
-                  onClick={() => navigate(`/admin/branch/${encodeURIComponent(selectedBranch)}`)}
-                  style={{ fontSize: "14px" }}
+                  onClick={() => navigate(`/admin/branch/${encodeURIComponent(selected)}`)}
+                  style={{
+                    padding: "8px 20px",
+                    background: C.blue, border: "none", borderRadius: "3px",
+                    color: "#FFFFFF", fontSize: "10px", fontWeight: "700",
+                    letterSpacing: "0.12em", textTransform: "uppercase",
+                    cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+                    transition: "opacity 0.15s",
+                  }}
+                  onMouseOver={e => e.currentTarget.style.opacity = "0.85"}
+                  onMouseOut={e => e.currentTarget.style.opacity = "1"}
                 >
-                  View Technicians in {selectedBranch} →
+                  View Technicians →
                 </button>
               </div>
 
-              {/* Stats grid */}
-              <div className="fade-up" style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr",
-                gap: "10px", marginBottom: "20px", animationDelay: "0.1s",
+              {/* ── KPI Grid ── */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: "8px", marginBottom: "28px",
               }}>
-                <StatCard label="Technicians"      value={stats.technicianCount}                                              icon="👷" />
-                <StatCard label="Total Entries"    value={stats.totalEntries}                                                 icon="📋" />
-                <StatCard label="Hours Worked"     value={stats.totalHours}                                                   icon="⏱"  sub="hrs total" />
-                <StatCard label="Avg Hours / Tech" value={stats.avgHoursPerTechnician}                                        icon="📊"  sub="hrs avg" />
-                <StatCard label="Labour Total"     value={`₹${Number(stats.totalLabour).toLocaleString("en-IN")}`}            icon="💰" />
-                <StatCard label="Incentives"       value={`₹${Number(stats.totalIncentives).toLocaleString("en-IN")}`}       icon="⭐" />
-                <StatCard label="Leave Days"       value={stats.totalLeaveDays}                                               icon="🗓"  sub="days total" />
+                {STATS.map(({ key, label, unit, accent, fmt }) =>
+                  stats[key] !== undefined ? (
+                    <KpiCard key={key} label={label} value={fmt(stats[key])} unit={unit} accent={accent} />
+                  ) : null
+                )}
               </div>
 
-              {/* Category Breakdown */}
+              {/* ── Category breakdown ── */}
               {stats.categoryBreakdown?.length > 0 && (
-                <div className="fade-up al-card" style={{ animationDelay: "0.15s" }}>
-                  <p style={{ fontWeight: "600", fontSize: "14px", marginBottom: "16px" }}>
-                    Category Breakdown — {selectedBranch}
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{
+                  background: C.card, border: `1px solid ${C.border}`,
+                  borderRadius: "4px", padding: "24px",
+                }}>
+                  <div style={{
+                    display: "flex", alignItems: "center",
+                    justifyContent: "space-between", marginBottom: "24px",
+                  }}>
+                    <p style={{
+                      fontSize: "10px", fontWeight: "700",
+                      letterSpacing: "0.14em", textTransform: "uppercase",
+                      color: C.muted, margin: 0,
+                    }}>Category Breakdown</p>
+                    <p style={{
+                      fontSize: "10px", color: C.dim,
+                      letterSpacing: "0.08em",
+                    }}>
+                      {stats.categoryBreakdown.reduce((a, c) => a + c.count, 0)} entries
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
                     {stats.categoryBreakdown.map(({ _id, count }) => {
-                      const maxCount = stats.categoryBreakdown[0].count;
-                      const pct = Math.round((count / maxCount) * 100);
-                      const color = CATEGORY_COLORS[_id] || "var(--blue)";
+                      const max = stats.categoryBreakdown[0].count;
+                      const pct = Math.round((count / max) * 100);
+                      const totalCount = stats.categoryBreakdown.reduce((a, c) => a + c.count, 0);
+                      const sharePct = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
+                      const c = CAT[_id] || { bar: C.blue, label: C.blueL };
                       return (
                         <div key={_id}>
                           <div style={{
                             display: "flex", justifyContent: "space-between",
-                            alignItems: "center", marginBottom: "6px",
+                            alignItems: "center", marginBottom: "8px",
                           }}>
-                            <span style={{ fontSize: "13px" }}>{_id}</span>
-                            <span style={{
-                              fontSize: "13px", fontWeight: "600",
-                              fontFamily: "'IBM Plex Mono', monospace",
-                              color,
-                            }}>{count}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                              <div style={{
+                                width: "8px", height: "8px", borderRadius: "2px",
+                                background: c.bar, flexShrink: 0,
+                              }} />
+                              <span style={{ fontSize: "13px", color: "#B0B0CC", fontWeight: "500" }}>
+                                {_id}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                              <span style={{ fontSize: "11px", color: C.muted }}>{sharePct}%</span>
+                              <span style={{
+                                fontSize: "14px", fontWeight: "700",
+                                color: c.label,
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                minWidth: "28px", textAlign: "right",
+                              }}>{count}</span>
+                            </div>
                           </div>
                           <div style={{
-                            height: "5px", background: "var(--navy-light)",
-                            borderRadius: "3px", overflow: "hidden",
+                            height: "3px", background: C.border2,
+                            borderRadius: "2px", overflow: "hidden",
                           }}>
                             <div style={{
                               width: `${pct}%`, height: "100%",
-                              background: color, borderRadius: "3px",
-                              transition: "width 0.5s ease",
+                              background: c.bar, borderRadius: "2px",
+                              transition: "width 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
                             }} />
                           </div>
                         </div>
@@ -191,8 +286,6 @@ export default function AdminBranchDashboard() {
             </>
           ) : null
         )}
-
-        <div style={{ height: "32px" }} />
       </div>
     </div>
   );
