@@ -38,7 +38,7 @@ export default function Navbar() {
           fontSize: "13px", fontWeight: "700", color: "#fff",
           fontFamily: "'IBM Plex Mono', monospace",
         }}>
-          AML
+          ML
         </div>
         <span style={{ fontWeight: "700", fontSize: "15px", color: "var(--white)" }}>
           {isAdmin ? "Admin" : "Technician"}
