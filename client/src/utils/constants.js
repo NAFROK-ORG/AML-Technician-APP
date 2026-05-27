@@ -8,9 +8,9 @@ export const CATEGORIES = [
 ];
 
 export const BRANCHES = [
-  "Chennai",
-  "Coimbatore",
-  "Bengaluru",
+  "BALLARI",
+  "CHITRADURGA",
+  "HOSPET",
   "Hyderabad",
   "Mumbai",
   "Pune",

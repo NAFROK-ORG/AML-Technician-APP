@@ -1,12 +1,13 @@
 import api from "../api/axios";
 
-const CATEGORY_COLORS = {
-  "Engine Repair":  { bg: "rgba(30,111,217,0.15)", color: "#3B8FFF" },
-  "Electrical":     { bg: "rgba(255,193,7,0.12)",  color: "#FFC107" },
-  "Body Work":      { bg: "rgba(29,184,122,0.12)", color: "#1DB87A" },
-  "Transmission":   { bg: "rgba(156,39,176,0.12)", color: "#CE93D8" },
-  "AC & Cooling":   { bg: "rgba(0,188,212,0.12)",  color: "#00BCD4" },
-  "General Service":{ bg: "rgba(255,87,34,0.12)",  color: "#FF7043" },
+/* Category → a single accent color for the left border */
+const CAT_COLOR = {
+  "Engine Repair":   "#3B82F6",   /* blue    */
+  "Electrical":      "#EAB308",   /* yellow  */
+  "Body Work":       "#22C55E",   /* green   */
+  "Transmission":    "#A855F7",   /* purple  */
+  "AC & Cooling":    "#06B6D4",   /* cyan    */
+  "General Service": "#F97316",   /* orange  */
 };
 
 export default function EntryTable({ entries, onDeleted }) {
@@ -23,83 +24,163 @@ export default function EntryTable({ entries, onDeleted }) {
   if (entries.length === 0) {
     return (
       <div style={{
-        textAlign: "center", padding: "48px 20px",
-        background: "var(--navy-mid)", border: "1px solid var(--border)",
-        borderRadius: "12px",
+        textAlign: "center",
+        padding: "52px 20px",
+        background: "#18181B",
+        border: "1px solid #27272A",
       }}>
-        <div style={{ fontSize: "36px", marginBottom: "12px" }}>📋</div>
-        <p style={{ fontWeight: "600", marginBottom: "4px" }}>No entries yet</p>
-        <p style={{ color: "var(--steel)", fontSize: "14px" }}>Tap "+ New Entry" to log your first job</p>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: "20px",
+          fontWeight: "700",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "#3F3F46",
+          marginBottom: "6px",
+        }}>
+          No Entries Yet
+        </div>
+        <p style={{
+          color: "#71717A",
+          fontSize: "13px",
+          fontWeight: "300",
+          letterSpacing: "0.02em",
+        }}>
+          Tap "+ New Entry" to log your first job card
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
       {entries.map((entry) => {
-        const catStyle = CATEGORY_COLORS[entry.category] || { bg: "rgba(139,163,199,0.12)", color: "var(--steel)" };
+        const color = CAT_COLOR[entry.category] || "#71717A";
+
         const date = new Date(entry.date).toLocaleDateString("en-IN", {
-          day: "2-digit", month: "short", year: "numeric",
+          day: "2-digit",
+          month: "short",
+          year: "2-digit",
         });
+
         return (
-          <div key={entry._id} style={{
-            background: "var(--navy-mid)",
-            border: "1px solid var(--border)",
-            borderRadius: "12px",
-            padding: "16px",
-          }}>
-            {/* Top row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+          <div
+            key={entry._id}
+            style={{
+              background: "#18181B",
+              border: "1px solid #27272A",
+              borderLeft: `3px solid ${color}`,
+              padding: "16px 18px",
+            }}
+          >
+            {/* ── Top row ── */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: "14px",
+            }}>
               <div>
-                <span style={{
-                  display: "inline-block",
-                  background: catStyle.bg, color: catStyle.color,
-                  fontSize: "11px", fontWeight: "600",
-                  letterSpacing: "0.06em", textTransform: "uppercase",
-                  padding: "3px 10px", borderRadius: "20px", marginBottom: "6px",
-                }}>{entry.category}</span>
-                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", color: "var(--steel)" }}>
-                  JC: {entry.jcNo}
-                  {entry.vehicleNo && <span style={{ marginLeft: "10px" }}> · {entry.vehicleNo}</span>}
+                {/* Category label — colored text, no pill */}
+                <div style={{
+                  fontSize: "9px",
+                  fontWeight: "700",
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: color,
+                  marginBottom: "5px",
+                }}>
+                  {entry.category}
+                </div>
+
+                {/* JC No + Vehicle No */}
+                <div style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "12px",
+                  color: "#A1A1AA",
+                  letterSpacing: "0.04em",
+                }}>
+                  {entry.jcNo}
+                  {entry.vehicleNo && (
+                    <span style={{ marginLeft: "10px", color: "#71717A" }}>
+                      · {entry.vehicleNo}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "13px", color: "var(--steel)" }}>{date}</div>
-                <button
-                  onClick={() => handleDelete(entry._id)}
-                  style={{
-                    marginTop: "6px", background: "transparent",
-                    border: "none", color: "rgba(224,59,59,0.5)",
-                    fontSize: "12px", cursor: "pointer",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                    padding: "2px 0",
-                  }}
-                  onMouseOver={e => e.target.style.color = "var(--danger)"}
-                  onMouseOut={e => e.target.style.color = "rgba(224,59,59,0.5)"}
-                >
-                  Delete
-                </button>
+
+              {/* Date */}
+              <div style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "11px",
+                color: "#71717A",
+                textAlign: "right",
+                flexShrink: 0,
+                marginLeft: "12px",
+              }}>
+                {date}
               </div>
             </div>
 
-            {/* Stats row */}
+            {/* ── Stats row ── */}
             <div style={{
-              display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
               gap: "8px",
               paddingTop: "12px",
-              borderTop: "1px solid var(--border)",
+              borderTop: "1px solid #27272A",
             }}>
               {[
-                { label: "Labour", value: `₹${entry.labourAmount}` },
-                { label: "Hours", value: entry.hoursWorked },
-                { label: "Leave", value: `${entry.leaveDays}d` },
-                { label: "Incentive", value: `₹${entry.incentive}` },
+                { label: "Labour",    value: `₹${(entry.labourAmount || 0).toLocaleString("en-IN")}` },
+                { label: "Hours",     value: `${entry.hoursWorked || 0}h` },
+                { label: "Leave",     value: `${entry.leaveDays || 0}d` },
+                { label: "Incentive", value: `₹${entry.incentive || 0}` },
               ].map(({ label, value }) => (
-                <div key={label} style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "11px", color: "var(--steel)", marginBottom: "2px", letterSpacing: "0.05em" }}>{label}</div>
-                  <div style={{ fontSize: "14px", fontWeight: "600", fontFamily: "'IBM Plex Mono', monospace" }}>{value}</div>
+                <div key={label}>
+                  <div style={{
+                    fontSize: "9px",
+                    color: "#71717A",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    fontWeight: "600",
+                    marginBottom: "3px",
+                  }}>
+                    {label}
+                  </div>
+                  <div style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    color: "#FAFAFA",
+                  }}>
+                    {value}
+                  </div>
                 </div>
               ))}
+            </div>
+
+            {/* ── Delete ── */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
+              <button
+                onClick={() => handleDelete(entry._id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#3F3F46",
+                  fontSize: "9px",
+                  fontWeight: "600",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                  padding: "2px 0",
+                  transition: "color 0.15s",
+                }}
+                onMouseOver={e => e.currentTarget.style.color = "#EF4444"}
+                onMouseOut={e => e.currentTarget.style.color = "#3F3F46"}
+              >
+                Delete
+              </button>
             </div>
           </div>
         );

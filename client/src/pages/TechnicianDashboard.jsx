@@ -6,15 +6,20 @@ import EntryTable from "../components/EntryTable";
 import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
 
-function StatCard({ label, value, sub, icon }) {
+/* ── Money formatter ── */
+const fmtMoney = (n) => {
+  if (n === 0) return "₹0";
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  if (n >= 1000) return `₹${(n / 1000).toFixed(1)}k`;
+  return `₹${n}`;
+};
+
+function StatCard({ label, value, unit }) {
   return (
     <div className="stat-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <span className="stat-label">{label}</span>
-        <span style={{ fontSize: "18px" }}>{icon}</span>
-      </div>
+      <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
-      {sub && <div className="stat-sub">{sub}</div>}
+      {unit && <div className="stat-sub">{unit}</div>}
     </div>
   );
 }
@@ -38,85 +43,151 @@ export default function TechnicianDashboard() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  // Derived stats
-  const totalHours     = entries.reduce((s, e) => s + (e.hoursWorked || 0), 0);
-  const totalLabour    = entries.reduce((s, e) => s + (e.labourAmount || 0), 0);
-  const totalIncentive = entries.reduce((s, e) => s + (e.incentive || 0), 0);
-  const totalLeave     = entries.reduce((s, e) => s + (e.leaveDays || 0), 0);
+  const totalHours     = entries.reduce((s, e) => s + (e.hoursWorked    || 0), 0);
+  const totalLabour    = entries.reduce((s, e) => s + (e.labourAmount   || 0), 0);
+  const totalIncentive = entries.reduce((s, e) => s + (e.incentive      || 0), 0);
+  const totalLeave     = entries.reduce((s, e) => s + (e.leaveDays      || 0), 0);
   const totalVehicles  = new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size;
 
-  // Only show modal for technicians who haven't completed profile
-  // Admins skip this entirely — their role is set directly in DB, profileComplete stays false
   const needsProfile = user?.role === "technician" && !user?.profileComplete;
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--navy)" }}>
+    <div style={{ minHeight: "100dvh", background: "#09090B" }}>
       {needsProfile && <ProfileSetupModal />}
       <Navbar />
 
-      <div style={{ padding: "20px 16px", maxWidth: "600px", margin: "0 auto" }}>
+      <div style={{ padding: "32px 20px 64px", maxWidth: "600px", margin: "0 auto" }}>
 
-        {/* Welcome bar */}
-        <div className="fade-up" style={{ marginBottom: "20px" }}>
-          <h1 style={{ fontSize: "22px", fontWeight: "700" }}>
-            Hello, {user?.name?.split(" ")[0]} 👋
+        {/* ── Page header ── */}
+        <div className="fade-up" style={{ marginBottom: "28px" }}>
+          <div style={{
+            fontSize: "10px",
+            letterSpacing: "0.18em",
+            color: "#3B82F6",
+            fontWeight: "600",
+            textTransform: "uppercase",
+            marginBottom: "6px",
+          }}>
+            Technician Dashboard
+          </div>
+          <h1 style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: "38px",
+            fontWeight: "700",
+            color: "#FAFAFA",
+            letterSpacing: "0.02em",
+            textTransform: "uppercase",
+            lineHeight: 1,
+            marginBottom: "10px",
+          }}>
+            {user?.name?.split(" ")[0]}
           </h1>
-          <p style={{ color: "var(--steel)", fontSize: "13px", marginTop: "4px" }}>
-            <span style={{
-              fontFamily: "'IBM Plex Mono', monospace",
-              color: "var(--blue-light)", fontSize: "12px",
-            }}>{user?.technicianId}</span>
-            {user?.branch && (
-              <span style={{ marginLeft: "8px" }}>· {user.branch} Branch</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {user?.technicianId && (
+              <span style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "11px",
+                color: "#3B82F6",
+                letterSpacing: "0.06em",
+              }}>
+                {user.technicianId}
+              </span>
             )}
-          </p>
+            {user?.branch && (
+              <>
+                <span style={{ color: "#3F3F46" }}>·</span>
+                <span style={{
+                  fontSize: "10px",
+                  color: "#71717A",
+                  fontWeight: "600",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}>
+                  {user.branch}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Stats grid */}
-        <div className="fade-up" style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr",
-          gap: "10px", marginBottom: "24px",
-          animationDelay: "0.05s",
-        }}>
-          <StatCard label="Total Entries"   value={entries.length}                                   icon="📋" />
-          <StatCard label="Hours Worked"    value={totalHours}                                       icon="⏱"  sub="hrs total" />
-          <StatCard label="Labour Earned"   value={`₹${totalLabour.toLocaleString("en-IN")}`}        icon="💰" />
-          <StatCard label="Incentives"      value={`₹${totalIncentive.toLocaleString("en-IN")}`}     icon="⭐" />
-          <StatCard label="Leave Days"      value={totalLeave}                                       icon="🗓"  sub="days taken" />
-          <StatCard label="Vehicles Worked" value={totalVehicles}                                    icon="🚛" sub="unique vehicles" />
+        {/* ── Stats grid ── */}
+        <div
+          className="stat-grid fade-up"
+          style={{ marginBottom: "20px", animationDelay: "0.05s" }}
+        >
+          <StatCard label="Total Entries"   value={entries.length}                             />
+          <StatCard label="Hours Worked"    value={totalHours}         unit="hrs total"         />
+          <StatCard label="Labour Earned"   value={fmtMoney(totalLabour)}                      />
+          <StatCard label="Incentives"      value={fmtMoney(totalIncentive)}                   />
+          <StatCard label="Leave Days"      value={totalLeave}         unit="days taken"        />
+          <StatCard label="Vehicles Served" value={totalVehicles}      unit="unique"            />
         </div>
 
-        {/* New Entry button */}
-        <div className="fade-up" style={{ marginBottom: "20px", animationDelay: "0.1s" }}>
+        {/* ── New Entry CTA ── */}
+        <div className="fade-up" style={{ marginBottom: "36px", animationDelay: "0.08s" }}>
           <button
-            className="al-btn"
             onClick={() => setShowForm(true)}
             style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              gap: "8px", fontSize: "15px",
+              width: "100%",
+              padding: "16px",
+              background: "#FAFAFA",
+              color: "#09090B",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "11px",
+              fontWeight: "700",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              fontFamily: "'IBM Plex Sans', sans-serif",
+              transition: "background 0.15s",
+              borderRadius: 0,
             }}
+            onMouseOver={e => e.currentTarget.style.background = "#E4E4E7"}
+            onMouseOut={e => e.currentTarget.style.background = "#FAFAFA"}
           >
-            <span style={{ fontSize: "20px", lineHeight: 1 }}>+</span> New Entry
+            + New Entry
           </button>
         </div>
 
-        {/* Entries heading */}
-        <div style={{
-          display: "flex", justifyContent: "space-between",
-          alignItems: "center", marginBottom: "12px",
-        }}>
-          <h2 style={{ fontSize: "16px", fontWeight: "600" }}>My Entries</h2>
-          <span style={{
-            fontSize: "12px", color: "var(--steel)",
-            fontFamily: "'IBM Plex Mono', monospace",
-          }}>{entries.length} total</span>
-        </div>
+        {/* ── Entries section ── */}
+        <div className="fade-up" style={{ animationDelay: "0.12s" }}>
+          {/* Section header */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingBottom: "14px",
+            borderBottom: "1px solid #27272A",
+            marginBottom: "12px",
+          }}>
+            <div style={{
+              fontSize: "9px",
+              fontWeight: "600",
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "#71717A",
+            }}>
+              Work Entries
+            </div>
+            <div style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "11px",
+              color: "#71717A",
+            }}>
+              {entries.length} total
+            </div>
+          </div>
 
-        {/* Entries list */}
-        <div className="fade-up" style={{ animationDelay: "0.15s" }}>
           {loading ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "var(--steel)" }}>
-              Loading entries…
+            <div style={{
+              textAlign: "center",
+              padding: "48px 0",
+              color: "#71717A",
+              fontSize: "13px",
+              fontWeight: "300",
+              letterSpacing: "0.04em",
+            }}>
+              Loading…
             </div>
           ) : (
             <EntryTable entries={entries} onDeleted={fetchEntries} />
@@ -125,10 +196,7 @@ export default function TechnicianDashboard() {
       </div>
 
       {showForm && (
-        <EntryForm
-          onClose={() => setShowForm(false)}
-          onSaved={fetchEntries}
-        />
+        <EntryForm onClose={() => setShowForm(false)} onSaved={fetchEntries} />
       )}
     </div>
   );

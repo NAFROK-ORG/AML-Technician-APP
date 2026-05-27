@@ -1,192 +1,273 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+/* ── DESIGN TOKENS ─────────────────────────────────────────────────────── */
 :root {
-  --navy: #0A1628;
-  --navy-mid: #0F2044;
-  --navy-light: #162d5a;
-  --blue: #1E6FD9;
-  --blue-light: #3B8FFF;
-  --blue-glow: rgba(30, 111, 217, 0.25);
-  --white: #F0F4FF;
-  --white-dim: rgba(240, 244, 255, 0.6);
-  --steel: #8BA3C7;
-  --danger: #E03B3B;
-  --success: #1DB87A;
-  --border: rgba(30, 111, 217, 0.25);
+  --bg:      #09090B;   /* zinc-950  — page background  */
+  --s1:      #18181B;   /* zinc-900  — cards, panels    */
+  --s2:      #27272A;   /* zinc-800  — elevated surface */
+  --b1:      #27272A;   /* border subtle                */
+  --b2:      #3F3F46;   /* border visible               */
+  --t1:      #FAFAFA;   /* text primary                 */
+  --t2:      #A1A1AA;   /* text muted                   */
+  --t3:      #71717A;   /* text dim                     */
+  --blue:    #3B82F6;   /* accent — used very sparingly */
+  --adim:    rgba(59, 130, 246, 0.10);
+  --red:     #EF4444;
+  --rdim:    rgba(239, 68, 68, 0.10);
+  --green:   #22C55E;
 }
 
+/* ── RESET ─────────────────────────────────────────────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
   height: 100%;
-  background: var(--navy);
-  color: var(--white);
-  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--navy); }
-::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 2px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 2px; }
 
-/* Base input style */
-.al-input {
-  width: 100%;
-  background: var(--navy-mid);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
-  font-size: 16px;
-  font-family: 'IBM Plex Sans', sans-serif;
-  color: var(--white);
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  -webkit-appearance: none;
-}
-.al-input:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px var(--blue-glow);
-}
-.al-input::placeholder { color: var(--steel); }
-.al-input option { background: var(--navy-mid); color: var(--white); }
-
-/* Base button */
-.al-btn {
-  width: 100%;
-  padding: 15px;
-  background: var(--blue);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
-  font-family: 'IBM Plex Sans', sans-serif;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-  letter-spacing: 0.02em;
-}
-.al-btn:hover { background: var(--blue-light); }
-.al-btn:active { transform: scale(0.98); }
-.al-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-.al-btn-outline {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--steel);
-}
-.al-btn-outline:hover { border-color: var(--blue); color: var(--white); background: transparent; }
-
-.al-btn-danger {
-  background: var(--danger);
-}
-.al-btn-danger:hover { background: #c43232; }
-
-/* Card */
-.al-card {
-  background: var(--navy-mid);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-/* Label */
-.al-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--steel);
-  margin-bottom: 8px;
-}
-
-/* Error text */
-.al-error { color: var(--danger); font-size: 13px; margin-top: 5px; }
-
-/* Page fade-in */
+/* ── ANIMATION ─────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-up { animation: fadeUp 0.35s ease forwards; }
+.fade-up { animation: fadeUp 0.3s ease forwards; }
 
-/* Stepper */
-.stepper {
-  display: flex;
-  align-items: center;
-  background: var(--navy-mid);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.stepper button {
-  width: 48px;
-  height: 48px;
-  background: transparent;
-  border: none;
-  color: var(--blue-light);
-  font-size: 22px;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.stepper button:hover { background: var(--navy-light); }
-.stepper input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  text-align: center;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--white);
-  font-family: 'IBM Plex Mono', monospace;
-  outline: none;
-  padding: 0;
-  min-width: 0;
-}
-
-/* Navbar */
+/* ── NAVBAR ────────────────────────────────────────────────────────────── */
 .navbar {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(10, 22, 40, 0.95);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
-  padding: 0 16px;
-  height: 60px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--b1);
+  padding: 0 24px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* Stat card */
+/* ── STAT GRID — seamless connected grid ───────────────────────────────── */
+/*   gap: 1px + background = thin lines between cells, no box-shadows       */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--b1);
+  border: 1px solid var(--b1);
+}
+
 .stat-card {
-  background: var(--navy-mid);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  background: var(--s1);
+  padding: 20px 18px 16px;
 }
-.stat-card .stat-label {
-  font-size: 11px;
+
+.stat-label {
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--steel);
+  color: var(--t3);
+  margin-bottom: 10px;
 }
-.stat-card .stat-value {
-  font-size: 26px;
+
+.stat-value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 42px;
   font-weight: 700;
-  color: var(--white);
-  font-family: 'IBM Plex Mono', monospace;
-  line-height: 1.1;
+  color: var(--t1);
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
-.stat-card .stat-sub {
+
+.stat-sub {
+  font-size: 10px;
+  color: var(--t3);
+  font-weight: 300;
+  margin-top: 4px;
+  letter-spacing: 0.06em;
+}
+
+/* ── FORM INPUTS — bottom-border only, matches Login/Signup ────────────── */
+.al-input {
+  width: 100%;
+  padding: 11px 0;
+  font-size: 15px;
+  color: var(--t1);
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--b2);
+  outline: none;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 400;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+.al-input:focus          { border-bottom: 2px solid var(--t1); }
+.al-input::placeholder   { color: var(--t3); font-weight: 300; }
+.al-input.field-error    { border-bottom: 2px solid var(--red); }
+.al-input option         { background: var(--s2); color: var(--t1); }
+
+/* Hide native date picker arrow, show subtle one */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.35);
+  cursor: pointer;
+}
+
+/* Hide number input spinners — steppers have their own ± buttons */
+.stepper > input::-webkit-outer-spin-button,
+.stepper > input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.stepper > input[type=number] { -moz-appearance: textfield; }
+
+/* ── LABELS & ERRORS ────────────────────────────────────────────────────── */
+.al-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 10px;
+}
+
+.al-error {
+  color: var(--red);
   font-size: 12px;
-  color: var(--steel);
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+/* ── PRIMARY BUTTON — white on black ───────────────────────────────────── */
+.al-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--t1);
+  color: var(--bg);
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: 'IBM Plex Sans', sans-serif;
+  transition: background 0.15s;
+  border-radius: 0;
+}
+.al-btn:hover:not(:disabled) { background: #E4E4E7; }
+.al-btn:active:not(:disabled) { background: var(--t1); }
+.al-btn:disabled {
+  background: var(--s2);
+  color: var(--t3);
+  cursor: not-allowed;
+}
+
+/* ── STEPPER — bottom-border style like inputs ─────────────────────────── */
+.stepper {
+  display: flex;
+  align-items: center;
+  border-bottom: 1.5px solid var(--b2);
+  transition: border-color 0.15s;
+}
+.stepper:focus-within { border-bottom: 2px solid var(--t1); }
+
+.stepper > button {
+  width: 36px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--t3);
+  font-size: 18px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.stepper > button:hover { color: var(--t1); }
+
+.stepper > input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t1);
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 10px 0;
+}
+
+/* ── CARD ───────────────────────────────────────────────────────────────── */
+.al-card {
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  padding: 28px;
+}
+
+/* ── SERVER ERROR BANNER ─────────────────────────────────────────────────  */
+.al-server-error {
+  padding: 12px 16px;
+  background: var(--rdim);
+  border: 1px solid rgba(239, 68, 68, 0.20);
+  border-left: 3px solid var(--red);
+}
+.al-server-error p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--red);
+  font-weight: 500;
+}
+
+/* ── SECTION LABEL (inline divider) ────────────────────────────────────── */
+.al-section {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--t3);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--b1);
+  margin-bottom: 24px;
+}
+
+/* ── STEP INDICATOR — mirrors Login/Signup page ─────────────────────────  */
+.step-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 28px;
+}
+.step { display: flex; align-items: center; gap: 8px; }
+.step-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--t1);
+  flex-shrink: 0;
+}
+.step-dot.inactive { background: var(--b2); }
+.step-line {
+  flex: 1;
+  height: 1px;
+  background: var(--b1);
+  margin: 0 12px;
+}
+.step-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--t3);
+  font-weight: 500;
+  text-transform: uppercase;
 }
