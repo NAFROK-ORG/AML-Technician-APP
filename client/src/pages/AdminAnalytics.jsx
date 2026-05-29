@@ -9,8 +9,9 @@ import Navbar from "../components/Navbar";
 
 // ─── constants ───────────────────────────────────────────────────────────────
 const BRANCHES = [
-  "Chennai","Coimbatore","Bengaluru","Hyderabad",
-  "Mumbai","Pune","Delhi","Kolkata","Ahmedabad","Jaipur",
+  "BALLARI",
+  "CHITRADURGA",
+  "HOSPET",
 ];
 
 const CATEGORY_COLORS = {
