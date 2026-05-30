@@ -19,14 +19,18 @@ const entrySchema = new mongoose.Schema(
     category: {
       type: String,
       required: [true, "Category is required"],
-      enum: [
-        "Engine Repair",
-        "Electrical",
-        "Body Work",
-        "Transmission",
-        "AC & Cooling",
-        "General Service",
-      ],
+ enum: [
+  "ENGINE REPAIR",
+  "GEAR BOX",
+  "ELECTRICAL",
+  "BODY WORK",
+  "DIFFERENTIAL",
+  "TRANSMISSION",
+  "AC & COOLING",
+  "EATS FLUSHING",
+  "GENERAL SERVICE",
+  "SCHEDULE SERVICE",
+],
     },
     vehicleNo: {
       type: String,
