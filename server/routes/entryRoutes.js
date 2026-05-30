@@ -1,10 +1,19 @@
 const express = require("express");
-const router = express.Router();
-const { createEntry, getMyEntries, deleteEntry } = require("../controllers/entryController");
+const router  = express.Router();
 const { protect } = require("../middleware/authMiddleware");
+const {
+  createEntry,
+  getMyEntries,
+  deleteEntry,
+  getMonthlyIncentive,
+} = require("../controllers/entryController");
 
-router.post("/", protect, createEntry);
-router.get("/my", protect, getMyEntries);
-router.delete("/:id", protect, deleteEntry);
+// IMPORTANT: Specific literal paths (/my, /my/incentive) must be registered
+// BEFORE wildcard param routes (/:id) so Express matches them first.
+
+router.get("/my/incentive", protect, getMonthlyIncentive); // GET /api/entries/my/incentive
+router.get("/my",           protect, getMyEntries);         // GET /api/entries/my
+router.post("/",            protect, createEntry);          // POST /api/entries
+router.delete("/:id",       protect, deleteEntry);          // DELETE /api/entries/:id
 
 module.exports = router;
