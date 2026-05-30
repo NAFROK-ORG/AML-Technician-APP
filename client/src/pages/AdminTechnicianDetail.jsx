@@ -63,8 +63,8 @@ const CAT_STYLES = {
   },
 
   "SCHEDULE SERVICE": {
-    bg: "rgba(55,65,81,0.18)",
-    color: "#374151",
+    bg: "rgba(79,70,229,0.18)",
+    color: "#4F46E5",
   },
 };
 
