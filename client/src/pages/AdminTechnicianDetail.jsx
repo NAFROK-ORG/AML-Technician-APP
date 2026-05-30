@@ -17,12 +17,55 @@ const C = {
 };
 
 const CAT_STYLES = {
-  "Engine Repair":   { bg: "rgba(76,112,245,0.12)",  color: "#7A98F8" },
-  "Electrical":      { bg: "rgba(232,160,0,0.12)",   color: "#FFC033" },
-  "Body Work":       { bg: "rgba(16,192,144,0.12)",  color: "#4DD8B6" },
-  "Transmission":    { bg: "rgba(144,112,240,0.12)", color: "#B89AF8" },
-  "AC & Cooling":    { bg: "rgba(24,200,223,0.12)",  color: "#6DDDE8" },
-  "General Service": { bg: "rgba(232,112,24,0.12)",  color: "#FF9A50" },
+  "ENGINE REPAIR": {
+    bg: "rgba(37,99,235,0.18)",
+    color: "#2563EB",
+  },
+
+  "GEAR BOX": {
+    bg: "rgba(220,38,38,0.18)",
+    color: "#DC2626",
+  },
+
+  "ELECTRICAL": {
+    bg: "rgba(245,158,11,0.18)",
+    color: "#F59E0B",
+  },
+
+  "BODY WORK": {
+    bg: "rgba(22,163,74,0.18)",
+    color: "#16A34A",
+  },
+
+  "DIFFERENTIAL": {
+    bg: "rgba(219,39,119,0.18)",
+    color: "#DB2777",
+  },
+
+  "TRANSMISSION": {
+    bg: "rgba(124,58,237,0.18)",
+    color: "#7C3AED",
+  },
+
+  "AC & COOLING": {
+    bg: "rgba(8,145,178,0.18)",
+    color: "#0891B2",
+  },
+
+  "EATS FLUSHING": {
+    bg: "rgba(146,64,14,0.18)",
+    color: "#92400E",
+  },
+
+  "GENERAL SERVICE": {
+    bg: "rgba(234,88,12,0.18)",
+    color: "#EA580C",
+  },
+
+  "SCHEDULE SERVICE": {
+    bg: "rgba(55,65,81,0.18)",
+    color: "#374151",
+  },
 };
 
 /* ─── Shared inline style helpers ───────────────────────────────────── */
