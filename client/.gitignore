@@ -1,5 +1,33 @@
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+*.env
+
+# Keep examples
+!.env.example
+
+# =========================
+# Dependencies
+# =========================
+node_modules/
+**/node_modules/
+
+# =========================
+# Build Outputs
+# =========================
+dist/
+build/
+out/
+coverage/
+**/dist/
+**/build/
+
+# =========================
 # Logs
-logs
+# =========================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,19 +35,78 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# =========================
+# Cache
+# =========================
+.cache/
+.parcel-cache/
+.vite/
+.next/
+.nuxt/
 
-# Editor directories and files
+# =========================
+# Operating System Files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE & Editors
+# =========================
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-*.env
+*.swp
+
+# =========================
+# Temporary Files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# Testing
+# =========================
+coverage/
+.nyc_output/
+
+# =========================
+# Package Managers
+# =========================
+.pnp
+.pnp.js
+
+# =========================
+# Runtime Files
+# =========================
+*.pid
+*.seed
+*.pid.lock
+
+# =========================
+# Uploads (if applicable)
+# =========================
+uploads/
+public/uploads/
+
+# =========================
+# Database Files
+# =========================
+*.sqlite
+*.sqlite3
+
+# =========================
+# Secrets & Certificates
+# =========================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
