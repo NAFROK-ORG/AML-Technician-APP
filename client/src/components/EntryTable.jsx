@@ -2,12 +2,16 @@ import api from "../api/axios";
 
 /* Category → accent color (darker variants for light backgrounds) */
 const CAT_COLOR = {
-  "Engine Repair":   "#1D4ED8",
-  "Electrical":      "#B45309",
-  "Body Work":       "#15803D",
-  "Transmission":    "#6D28D9",
-  "AC & Cooling":    "#0369A1",
-  "General Service": "#C2410C",
+  "ENGINE REPAIR":    "#2563EB", // Blue
+  "GEAR BOX":         "#DC2626", // Red
+  "ELECTRICAL":       "#F59E0B", // Amber
+  "BODY WORK":        "#16A34A", // Green
+  "DIFFERENTIAL":     "#DB2777", // Magenta
+  "TRANSMISSION":     "#7C3AED", // Purple
+  "AC & COOLING":     "#0891B2", // Cyan
+  "EATS FLUSHING":    "#92400E", // Brown
+  "GENERAL SERVICE":  "#EA580C", // Orange
+  "SCHEDULE SERVICE": "#374151", // Slate Gray
 };
 
 export default function EntryTable({ entries, onDeleted }) {
