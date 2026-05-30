@@ -1,15 +1,18 @@
 export const CATEGORIES = [
-  "Engine Repair",
-  "Electrical",
-  "Body Work",
-  "Transmission",
-  "AC & Cooling",
-  "General Service",
+  "ENGINE REPAIR",
+  "GEAR BOX",
+  "ELECTRICAL",
+  "BODY WORK",
+  "DIFFERENTIAL",
+  "TRANSMISSION",
+  "AC & COOLING",
+  "EATS FLUSHING",
+  "GENERAL SERVICE",
+  "SCHEDULE SERVICE",
 ];
 
 export const BRANCHES = [
   "BALLARI",
   "CHITRADURGA",
   "HOSPET",
-
 ];
