@@ -15,12 +15,16 @@ const BRANCHES = [
 ];
 
 const CATEGORY_COLORS = {
-  "Engine Repair":  "#3B8FFF",
-  "Electrical":     "#F59E0B",
-  "Body Work":      "#10B981",
-  "Transmission":   "#8B5CF6",
-  "AC & Cooling":   "#06B6D4",
-  "General Service":"#F97316",
+ "ENGINE REPAIR":   "#2563EB", // Blue
+  "GEAR BOX":        "#DC2626", // Red
+  "ELECTRICAL":      "#F59E0B", // Amber
+  "BODY WORK":       "#16A34A", // Green
+  "DIFFERENTIATE":   "#DB2777", // Magenta
+  "TRANSMISSION":    "#7C3AED", // Purple
+  "AC & COOLING":    "#0891B2", // Cyan
+  "EATS FLUSING":    "#92400E", // Brown
+  "GENERAL SERVICE": "#EA580C", // Orange
+  "SCHEDULE SERVICE":"#374151", // Gray
 };
 
 const BRANCH_COLORS = [
