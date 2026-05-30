@@ -16,14 +16,56 @@ const C = {
 
 /* ─── Category config ───────────────────────────────────────────────── */
 const CAT = {
-  "Engine Repair":   { bar: "#4C70F5", label: "#7A98F8" },
-  "Electrical":      { bar: "#E8A000", label: "#FFC033" },
-  "Body Work":       { bar: "#10C090", label: "#4DD8B6" },
-  "Transmission":    { bar: "#9070F0", label: "#B89AF8" },
-  "AC & Cooling":    { bar: "#18C8DF", label: "#6DDDE8" },
-  "General Service": { bar: "#E87018", label: "#FF9A50" },
-};
+  "ENGINE REPAIR": {
+    bar: "#2563EB",
+    label: "#60A5FA",
+  },
 
+  "GEAR BOX": {
+    bar: "#DC2626",
+    label: "#F87171",
+  },
+
+  "ELECTRICAL": {
+    bar: "#F59E0B",
+    label: "#FBBF24",
+  },
+
+  "BODY WORK": {
+    bar: "#16A34A",
+    label: "#4ADE80",
+  },
+
+  "DIFFERENTIAL": {
+    bar: "#DB2777",
+    label: "#F472B6",
+  },
+
+  "TRANSMISSION": {
+    bar: "#7C3AED",
+    label: "#A78BFA",
+  },
+
+  "AC & COOLING": {
+    bar: "#0891B2",
+    label: "#67E8F9",
+  },
+
+  "EATS FLUSHING": {
+    bar: "#92400E",
+    label: "#D97706",
+  },
+
+  "GENERAL SERVICE": {
+    bar: "#EA580C",
+    label: "#FB923C",
+  },
+
+  "SCHEDULE SERVICE": {
+    bar: "#374151",
+    label: "#9CA3AF",
+  },
+};
 /* ─── KPI card ─────────────────────────────────────────────────────── */
 function KpiCard({ label, value, unit, accent = C.blue }) {
   return (
