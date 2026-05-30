@@ -1,18 +1,250 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import api from "../api/axios";
 import { useAuthStore } from "../store/authStore";
 import { BRANCHES } from "../utils/constants";
 
+// ─── Injected styles ──────────────────────────────────────────────────────────
+
+const MODAL_STYLES = `
+  @keyframes psmFadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .psm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(10, 22, 40, 0.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .psm-card {
+    width: 100%;
+    max-width: 420px;
+    background: #FFFFFF;
+    border: 1px solid #DDE3EE;
+    padding: 28px 24px;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    animation: psmFadeUp 0.28s ease both;
+  }
+
+  /* ── Header ── */
+  .psm-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #EEF2F7;
+  }
+  .psm-icon {
+    width: 44px;
+    height: 44px;
+    background: #EEF2F7;
+    border: 1.5px solid #DDE3EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .psm-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #0A1628;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1.1;
+    margin-bottom: 3px;
+  }
+  .psm-subtitle {
+    font-size: 11px;
+    color: #6B7A99;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Form ── */
+  .psm-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .psm-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .psm-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6B7A99;
+  }
+  .psm-input {
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    background: #F8FAFC;
+    border: 1.5px solid #DDE3EE;
+    color: #0A1628;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    border-radius: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+  }
+  .psm-input:focus {
+    border-color: #1E3A8A;
+    background: #FFFFFF;
+  }
+  .psm-input::placeholder { color: #94A3B8; font-weight: 400; }
+  .psm-input-mono {
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.06em;
+  }
+  .psm-error {
+    font-size: 10px;
+    color: #DC2626;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .psm-server-error {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-left: 3px solid #DC2626;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #991B1B;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  /* ── Submit button ── */
+  .psm-submit-btn {
+    width: 100%;
+    height: 52px;
+    background: #1E3A8A;
+    color: #FFFFFF;
+    border: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .psm-submit-btn:hover:not(:disabled) { background: #1E40AF; }
+  .psm-submit-btn:active:not(:disabled) { background: #1E3A8A; }
+  .psm-submit-btn:disabled {
+    background: #94A3B8;
+    cursor: not-allowed;
+  }
+
+  /* ── Admin section ── */
+  .psm-divider {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #EEF2F7;
+  }
+  .psm-admin-link {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    padding: 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    text-align: center;
+    letter-spacing: 0.04em;
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .psm-admin-link:hover { color: #6B7A99; }
+
+  .psm-approval-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #EEF2F7;
+    border: 1px solid #DDE3EE;
+    border-left: 3px solid #1E3A8A;
+    padding: 12px 14px;
+  }
+  .psm-approval-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .psm-approval-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #0A1628;
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .psm-approval-text {
+    font-size: 11px;
+    color: #6B7A99;
+    line-height: 1.5;
+    margin: 0;
+  }
+  .psm-approval-name {
+    color: #1E3A8A;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.06em;
+  }
+`;
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function ProfileSetupModal() {
   const { setAuth, user } = useAuthStore();
-  const [loading, setLoading] = useState(false);
-  const [serverError, setServerError] = useState("");
+  const [loading,         setLoading]         = useState(false);
+  const [serverError,     setServerError]     = useState("");
   const [showApprovalMsg, setShowApprovalMsg] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: { name: user?.name || "" },
   });
+
+  /* inject styles */
+  useEffect(() => {
+    const id = "psm-modal-styles";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id;
+      el.textContent = MODAL_STYLES;
+      document.head.appendChild(el);
+    }
+    return () => {
+      const el = document.getElementById(id);
+      if (el) document.head.removeChild(el);
+    };
+  }, []);
 
   const onSubmit = async (data) => {
     setLoading(true);
@@ -28,61 +260,51 @@ export default function ProfileSetupModal() {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 100,
-      background: "rgba(10,22,40,0.92)",
-      backdropFilter: "blur(8px)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "16px",
-    }}>
-      <div className="al-card fade-up" style={{ width: "100%", maxWidth: "420px" }}>
+    <div className="psm-overlay">
+      <div className="psm-card">
 
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px",
-          paddingBottom: "20px", borderBottom: "1px solid var(--border)",
-        }}>
-          <div style={{
-            width: 44, height: 44,
-            background: "var(--blue)", borderRadius: "10px",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "20px",
-          }}>👷</div>
+        {/* ── Header ── */}
+        <div className="psm-header">
+          <div className="psm-icon">👷</div>
           <div>
-            <h2 style={{ fontSize: "18px", fontWeight: "700" }}>Complete Your Profile</h2>
-            <p style={{ color: "var(--steel)", fontSize: "13px" }}>One-time setup — takes 30 seconds</p>
+            <div className="psm-title">Complete Profile</div>
+            <div className="psm-subtitle">One-time setup · takes 30 seconds</div>
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div>
-            <label className="al-label">Technician ID</label>
+        {/* ── Form ── */}
+        <form className="psm-form" onSubmit={handleSubmit(onSubmit)}>
+
+          <div className="psm-field-group">
+            <label className="psm-label">Technician ID</label>
             <input
-              className="al-input"
+              className="psm-input psm-input-mono"
               type="text"
               placeholder="e.g. TEC-2045"
-              style={{ fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}
               {...register("technicianId", { required: "Technician ID is required" })}
             />
-            {errors.technicianId && <p className="al-error">{errors.technicianId.message}</p>}
+            {errors.technicianId && (
+              <span className="psm-error">{errors.technicianId.message}</span>
+            )}
           </div>
 
-          <div>
-            <label className="al-label">Display Name</label>
+          <div className="psm-field-group">
+            <label className="psm-label">Display Name</label>
             <input
-              className="al-input"
+              className="psm-input"
               type="text"
               placeholder="Your full name"
               {...register("name", { required: "Name is required" })}
             />
-            {errors.name && <p className="al-error">{errors.name.message}</p>}
+            {errors.name && (
+              <span className="psm-error">{errors.name.message}</span>
+            )}
           </div>
 
-          <div>
-            <label className="al-label">Branch</label>
+          <div className="psm-field-group">
+            <label className="psm-label">Branch</label>
             <select
-              className="al-input"
+              className="psm-input"
               {...register("branch", { required: "Branch is required" })}
             >
               <option value="">Select your branch</option>
@@ -90,73 +312,39 @@ export default function ProfileSetupModal() {
                 <option key={b} value={b}>{b}</option>
               ))}
             </select>
-            {errors.branch && <p className="al-error">{errors.branch.message}</p>}
+            {errors.branch && (
+              <span className="psm-error">{errors.branch.message}</span>
+            )}
           </div>
 
           {serverError && (
-            <div style={{
-              background: "rgba(224,59,59,0.12)",
-              border: "1px solid rgba(224,59,59,0.3)",
-              borderRadius: "8px", padding: "12px 14px",
-              color: "var(--danger)", fontSize: "14px",
-            }}>
-              {serverError}
-            </div>
+            <div className="psm-server-error">{serverError}</div>
           )}
 
-          <button className="al-btn" type="submit" disabled={loading}>
+          <button className="psm-submit-btn" type="submit" disabled={loading}>
             {loading ? "Saving…" : "Save & Continue →"}
           </button>
+
         </form>
 
-        {/* Admin approval CTA */}
-        <div style={{
-          marginTop: "20px",
-          paddingTop: "16px",
-          borderTop: "1px solid var(--border)",
-        }}>
+        {/* ── Admin approval CTA ── */}
+        <div className="psm-divider">
           {!showApprovalMsg ? (
-            <div style={{ textAlign: "center" }}>
-              <button
-                type="button"
-                onClick={() => setShowApprovalMsg(true)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--steel)",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  textDecorationStyle: "dotted",
-                  textUnderlineOffset: "3px",
-                  padding: 0,
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}
-              >
-                Are you an admin?
-              </button>
-            </div>
+            <button
+              type="button"
+              className="psm-admin-link"
+              onClick={() => setShowApprovalMsg(true)}
+            >
+              Are you an admin?
+            </button>
           ) : (
-            <div style={{
-              display: "flex", alignItems: "flex-start", gap: "10px",
-              background: "rgba(30,111,217,0.08)",
-              border: "1px solid rgba(30,111,217,0.25)",
-              borderRadius: "10px",
-              padding: "12px 14px",
-            }}>
-              <span style={{ fontSize: "16px", flexShrink: 0, marginTop: "1px" }}>🔒</span>
+            <div className="psm-approval-box">
+              <span className="psm-approval-icon">🔒</span>
               <div>
-                <p style={{ fontSize: "13px", fontWeight: "600", color: "var(--white)", marginBottom: "4px" }}>
-                  Waiting for approval
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--steel)", lineHeight: "1.5" }}>
+                <p className="psm-approval-title">Waiting for approval</p>
+                <p className="psm-approval-text">
                   Admin access is managed directly. Please contact{" "}
-                  <span style={{
-                    color: "var(--blue-light)", fontWeight: "600",
-                    fontFamily: "'IBM Plex Mono', monospace",
-                  }}>
-                    NAFROK
-                  </span>{" "}
+                  <span className="psm-approval-name">NAFROK</span>{" "}
                   to get your account elevated.
                 </p>
               </div>
