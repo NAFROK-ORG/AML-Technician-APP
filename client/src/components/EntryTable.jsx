@@ -1,13 +1,13 @@
 import api from "../api/axios";
 
-/* Category → a single accent color for the left border */
+/* Category → accent color (darker variants for light backgrounds) */
 const CAT_COLOR = {
-  "Engine Repair":   "#3B82F6",   /* blue    */
-  "Electrical":      "#EAB308",   /* yellow  */
-  "Body Work":       "#22C55E",   /* green   */
-  "Transmission":    "#A855F7",   /* purple  */
-  "AC & Cooling":    "#06B6D4",   /* cyan    */
-  "General Service": "#F97316",   /* orange  */
+  "Engine Repair":   "#1D4ED8",
+  "Electrical":      "#B45309",
+  "Body Work":       "#15803D",
+  "Transmission":    "#6D28D9",
+  "AC & Cooling":    "#0369A1",
+  "General Service": "#C2410C",
 };
 
 export default function EntryTable({ entries, onDeleted }) {
@@ -26,8 +26,7 @@ export default function EntryTable({ entries, onDeleted }) {
       <div style={{
         textAlign: "center",
         padding: "52px 20px",
-        background: "#18181B",
-        border: "1px solid #27272A",
+        background: "#F8FAFC",
       }}>
         <div style={{
           fontFamily: "'Barlow Condensed', sans-serif",
@@ -35,16 +34,17 @@ export default function EntryTable({ entries, onDeleted }) {
           fontWeight: "700",
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          color: "#3F3F46",
+          color: "#94A3B8",
           marginBottom: "6px",
         }}>
           No Entries Yet
         </div>
         <p style={{
-          color: "#71717A",
-          fontSize: "13px",
-          fontWeight: "300",
-          letterSpacing: "0.02em",
+          color: "#94A3B8",
+          fontSize: "12px",
+          fontWeight: "400",
+          letterSpacing: "0.04em",
+          margin: 0,
         }}>
           Tap "+ New Entry" to log your first job card
         </p>
@@ -53,9 +53,9 @@ export default function EntryTable({ entries, onDeleted }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+    <div style={{ display: "flex", flexDirection: "column" }}>
       {entries.map((entry) => {
-        const color = CAT_COLOR[entry.category] || "#71717A";
+        const color = CAT_COLOR[entry.category] || "#6B7A99";
 
         const date = new Date(entry.date).toLocaleDateString("en-IN", {
           day: "2-digit",
@@ -67,10 +67,10 @@ export default function EntryTable({ entries, onDeleted }) {
           <div
             key={entry._id}
             style={{
-              background: "#18181B",
-              border: "1px solid #27272A",
+              background: "#FFFFFF",
+              borderBottom: "1px solid #EEF2F7",
               borderLeft: `3px solid ${color}`,
-              padding: "16px 18px",
+              padding: "16px 20px",
             }}
           >
             {/* ── Top row ── */}
@@ -81,7 +81,7 @@ export default function EntryTable({ entries, onDeleted }) {
               marginBottom: "14px",
             }}>
               <div>
-                {/* Category label — colored text, no pill */}
+                {/* Category label */}
                 <div style={{
                   fontSize: "9px",
                   fontWeight: "700",
@@ -97,12 +97,12 @@ export default function EntryTable({ entries, onDeleted }) {
                 <div style={{
                   fontFamily: "'IBM Plex Mono', monospace",
                   fontSize: "12px",
-                  color: "#A1A1AA",
+                  color: "#374151",
                   letterSpacing: "0.04em",
                 }}>
                   {entry.jcNo}
                   {entry.vehicleNo && (
-                    <span style={{ marginLeft: "10px", color: "#71717A" }}>
+                    <span style={{ marginLeft: "10px", color: "#94A3B8" }}>
                       · {entry.vehicleNo}
                     </span>
                   )}
@@ -113,7 +113,7 @@ export default function EntryTable({ entries, onDeleted }) {
               <div style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: "11px",
-                color: "#71717A",
+                color: "#94A3B8",
                 textAlign: "right",
                 flexShrink: 0,
                 marginLeft: "12px",
@@ -128,7 +128,7 @@ export default function EntryTable({ entries, onDeleted }) {
               gridTemplateColumns: "repeat(4, 1fr)",
               gap: "8px",
               paddingTop: "12px",
-              borderTop: "1px solid #27272A",
+              borderTop: "1px solid #EEF2F7",
             }}>
               {[
                 { label: "Labour",    value: `₹${(entry.labourAmount || 0).toLocaleString("en-IN")}` },
@@ -138,11 +138,11 @@ export default function EntryTable({ entries, onDeleted }) {
               ].map(({ label, value }) => (
                 <div key={label}>
                   <div style={{
-                    fontSize: "9px",
-                    color: "#71717A",
-                    letterSpacing: "0.1em",
+                    fontSize: "8px",
+                    color: "#94A3B8",
+                    letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    fontWeight: "600",
+                    fontWeight: "700",
                     marginBottom: "3px",
                   }}>
                     {label}
@@ -150,8 +150,8 @@ export default function EntryTable({ entries, onDeleted }) {
                   <div style={{
                     fontFamily: "'IBM Plex Mono', monospace",
                     fontSize: "13px",
-                    fontWeight: "500",
-                    color: "#FAFAFA",
+                    fontWeight: "600",
+                    color: "#0A1628",
                   }}>
                     {value}
                   </div>
@@ -166,18 +166,19 @@ export default function EntryTable({ entries, onDeleted }) {
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#3F3F46",
+                  color: "#CBD5E1",
                   fontSize: "9px",
-                  fontWeight: "600",
-                  letterSpacing: "0.12em",
+                  fontWeight: "700",
+                  letterSpacing: "0.14em",
                   textTransform: "uppercase",
                   cursor: "pointer",
                   fontFamily: "'IBM Plex Sans', sans-serif",
-                  padding: "2px 0",
+                  padding: "4px 0",
                   transition: "color 0.15s",
+                  WebkitTapHighlightColor: "transparent",
                 }}
-                onMouseOver={e => e.currentTarget.style.color = "#EF4444"}
-                onMouseOut={e => e.currentTarget.style.color = "#3F3F46"}
+                onMouseOver={(e) => (e.currentTarget.style.color = "#DC2626")}
+                onMouseOut={(e)  => (e.currentTarget.style.color = "#CBD5E1")}
               >
                 Delete
               </button>
