@@ -4,19 +4,307 @@ import { useAuthStore } from "../store/authStore";
 
 /* ─── Admin nav items ──────────────────────────────────────────── */
 const ADMIN_NAV = [
-  { path: "/admin",           label: "Dashboard"   },
-  { path: "/admin/analytics", label: "Analytics"   },
+  { path: "/admin",            label: "Dashboard" },
+  { path: "/admin/analytics",  label: "Analytics" },
   // add more admin routes here as needed
 ];
 
+/* ─── Injected styles ──────────────────────────────────────────── */
+const NAV_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  .aml-nav-root {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 3px brand stripe — matches Login/Signup */
+  .aml-nav-stripe {
+    height: 3px;
+    background: #1E3A8A;
+    width: 100%;
+  }
+
+  /* Main bar */
+  .aml-nav-bar {
+    height: 52px;
+    background: #FFFFFF;
+    border-bottom: 1px solid #DDE3EE;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+  }
+
+  /* Left side: brand + desktop nav */
+  .aml-nav-left {
+    display: flex;
+    align-items: center;
+    height: 52px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* Brand */
+  .aml-brand {
+    text-decoration: none;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .aml-brand-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #0A1628;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .aml-brand-sub {
+    font-size: 7.5px;
+    letter-spacing: 0.16em;
+    color: #6B7A99;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* Brand/nav divider — desktop only */
+  .aml-brand-sep {
+    display: none;
+    width: 1px;
+    height: 22px;
+    background: #DDE3EE;
+    margin: 0 16px;
+    flex-shrink: 0;
+  }
+
+  /* Desktop nav links — admin only, ≥640px */
+  .aml-desktop-nav {
+    display: none;
+    align-items: center;
+    height: 52px;
+  }
+  .aml-desktop-link {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6B7A99;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px; /* flush with nav bottom border */
+    white-space: nowrap;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .aml-desktop-link:hover  { color: #1E3A8A; }
+  .aml-desktop-link.active { color: #1E3A8A; border-bottom-color: #1E3A8A; }
+
+  /* Right cluster */
+  .aml-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  /* Vertical divider */
+  .aml-vert-sep {
+    width: 1px;
+    height: 22px;
+    background: #DDE3EE;
+    flex-shrink: 0;
+  }
+
+  /* User info */
+  .aml-user { text-align: right; }
+  .aml-user-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #0A1628;
+    line-height: 1;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .aml-user-branch {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    color: #6B7A99;
+    text-transform: uppercase;
+    margin-top: 3px;
+    font-weight: 600;
+  }
+  .aml-user-role {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    color: #1E3A8A;
+    text-transform: uppercase;
+    margin-top: 3px;
+    font-weight: 600;
+  }
+
+  /* Sign Out button */
+  .aml-signout {
+    background: transparent;
+    border: 1px solid #DDE3EE;
+    padding: 7px 13px;
+    color: #6B7A99;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0;
+    flex-shrink: 0;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    -webkit-appearance: none;
+  }
+  .aml-signout:hover  { border-color: #DC2626; color: #DC2626; background: #FEF2F2; }
+  .aml-signout:active { background: #FEE2E2; }
+
+  /* Admin desktop sign-out — hidden on mobile, shown ≥640px */
+  .aml-signout-desktop {
+    display: none;
+  }
+
+  /* Hamburger — shown on mobile only (admin) */
+  .aml-burger {
+    display: flex;
+    flex-direction: column;
+    gap: 4.5px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #DDE3EE;
+    padding: 9px 10px;
+    cursor: pointer;
+    border-radius: 0;
+    flex-shrink: 0;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    -webkit-appearance: none;
+  }
+  .aml-burger:hover      { border-color: #1E3A8A; }
+  .aml-burger.open       { border-color: #1E3A8A; background: #F0F4FF; }
+  .aml-burger-line {
+    width: 15px;
+    height: 1.5px;
+    background: #374151;
+    display: block;
+    transition: transform 0.22s ease, opacity 0.18s ease;
+  }
+
+  /* Mobile dropdown */
+  .aml-mobile-menu {
+    background: #FFFFFF;
+    border-bottom: 1px solid #DDE3EE;
+    overflow: hidden;
+    transition: max-height 0.28s ease, opacity 0.22s ease;
+  }
+  .aml-mobile-menu-inner {
+    padding: 4px 16px 14px;
+    display: flex;
+    flex-direction: column;
+  }
+  .aml-mobile-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #6B7A99;
+    text-decoration: none;
+    border-bottom: 1px solid #F1F5F9;
+    transition: color 0.15s ease;
+  }
+  .aml-mobile-link.active { color: #1E3A8A; }
+  .aml-mobile-link:hover  { color: #1E3A8A; }
+  .aml-mobile-active-bar {
+    width: 3px;
+    height: 13px;
+    background: #1E3A8A;
+    flex-shrink: 0;
+  }
+  .aml-mobile-sep {
+    height: 1px;
+    background: #EEF2F7;
+    margin: 2px 0;
+  }
+  .aml-mobile-signout {
+    background: transparent;
+    border: none;
+    padding: 13px 0;
+    color: #6B7A99;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    text-align: left;
+    -webkit-appearance: none;
+    transition: color 0.15s ease;
+  }
+  .aml-mobile-signout:hover { color: #DC2626; }
+
+  /* ── Desktop breakpoint ≥640px ──────────────────────────────── */
+  @media (min-width: 640px) {
+    .aml-nav-bar    { padding: 0 24px; }
+    .aml-nav-right  { gap: 14px; }
+
+    /* Show brand separator + desktop nav links */
+    .aml-brand-sep   { display: block; }
+    .aml-desktop-nav { display: flex; }
+
+    /* Show admin desktop sign-out, hide hamburger + mobile menu */
+    .aml-signout-desktop { display: block; }
+    .aml-burger          { display: none; }
+    .aml-mobile-menu     { display: none !important; }
+  }
+
+  @media (min-width: 1024px) {
+    .aml-nav-bar      { padding: 0 32px; }
+    .aml-brand-name   { font-size: 19px; }
+    .aml-user-name    { max-width: 160px; }
+  }
+`;
+
 export default function Navbar() {
   const { user, logout } = useAuthStore();
-  const navigate          = useNavigate();
-  const location          = useLocation();
-  const isAdmin           = user?.role === "admin";
+  const navigate         = useNavigate();
+  const location         = useLocation();
+  const isAdmin          = user?.role === "admin";
 
-  const [menuOpen, setMenuOpen]   = useState(false);
-  const menuRef                   = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef                 = useRef(null);
+
+  /* inject styles once */
+  useEffect(() => {
+    const id = "aml-navbar-styles";
+    const existing = document.getElementById(id);
+    if (!existing) {
+      const el = document.createElement("style");
+      el.id = id;
+      el.textContent = NAV_STYLES;
+      document.head.appendChild(el);
+    }
+    return () => {
+      const el = document.getElementById(id);
+      if (el) document.head.removeChild(el);
+    };
+  }, []);
 
   /* close menu on outside click */
   useEffect(() => {
@@ -37,263 +325,126 @@ export default function Navbar() {
     navigate("/login");
   };
 
-  /* ── inline styles (keeps it self-contained / no extra CSS file needed) ── */
-  const s = {
-    nav: {
-      position: "sticky",
-      top: 0,
-      zIndex: 100,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "0 16px",
-      height: "52px",
-      background: "#09090B",
-      borderBottom: "1px solid #27272A",
-      fontFamily: "'IBM Plex Sans', sans-serif",
-    },
-
-    /* brand */
-    brand: { textDecoration: "none", flexShrink: 0, lineHeight: 1 },
-    brandName: {
-      fontFamily: "'Barlow Condensed', sans-serif",
-      fontSize: "17px",
-      fontWeight: "700",
-      letterSpacing: "0.06em",
-      color: "#FAFAFA",
-      textTransform: "uppercase",
-    },
-    brandSub: {
-      fontSize: "7px",
-      letterSpacing: "0.18em",
-      color: "#71717A",
-      fontWeight: "600",
-      textTransform: "uppercase",
-      marginTop: "2px",
-    },
-
-    /* right cluster */
-    right: {
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      borderLeft: "1px solid #27272A",
-      paddingLeft: "14px",
-    },
-
-    /* user info */
-    userBlock: { textAlign: "right" },
-    userName: {
-      fontSize: "11px",
-      fontWeight: "500",
-      color: "#FAFAFA",
-      lineHeight: 1,
-      maxWidth: "110px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    userBranch: {
-      fontSize: "8px",
-      letterSpacing: "0.12em",
-      color: "#71717A",
-      textTransform: "uppercase",
-      marginTop: "2px",
-      fontWeight: "600",
-    },
-
-    /* sign out */
-    signOut: {
-      background: "transparent",
-      border: "1px solid #27272A",
-      padding: "6px 12px",
-      color: "#71717A",
-      fontSize: "9px",
-      fontWeight: "600",
-      letterSpacing: "0.12em",
-      textTransform: "uppercase",
-      cursor: "pointer",
-      fontFamily: "'IBM Plex Sans', sans-serif",
-      borderRadius: 0,
-      flexShrink: 0,
-      transition: "border-color 0.15s, color 0.15s",
-    },
-
-    /* hamburger button (admin) */
-    burger: {
-      background: "transparent",
-      border: "1px solid #27272A",
-      padding: "6px 10px",
-      cursor: "pointer",
-      color: "#A1A1AA",
-      display: "flex",
-      flexDirection: "column",
-      gap: "4px",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-      transition: "border-color 0.15s",
-    },
-    burgerLine: {
-      width: "16px",
-      height: "1.5px",
-      background: "currentColor",
-      display: "block",
-      transition: "transform 0.2s, opacity 0.2s",
-    },
-
-    /* dropdown menu (admin) */
-    menuWrapper: {
-      position: "absolute",
-      top: "52px",
-      right: 0,
-      left: 0,
-      background: "#09090B",
-      borderBottom: "1px solid #27272A",
-      overflow: "hidden",
-      transition: "max-height 0.25s ease, opacity 0.2s ease",
-      zIndex: 99,
-    },
-    menuInner: {
-      padding: "8px 16px 12px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "2px",
-    },
-    menuSeparator: {
-      height: "1px",
-      background: "#27272A",
-      margin: "6px 0",
-    },
-  };
-
-  /* ── admin mobile menu link ── */
-  const AdminMenuLink = ({ path, label }) => {
-    const active = location.pathname === path;
-    return (
-      <Link
-        to={path}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "10px 4px",
-          fontSize: "11px",
-          fontWeight: "600",
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          color: active ? "#FAFAFA" : "#71717A",
-          textDecoration: "none",
-          borderBottom: `1px solid ${active ? "#3F3F46" : "transparent"}`,
-          transition: "color 0.15s",
-        }}
-      >
-        {active && (
-          <span style={{ width: "3px", height: "14px", background: "#FAFAFA", display: "inline-block", flexShrink: 0 }} />
-        )}
-        {label}
-      </Link>
-    );
-  };
-
   return (
-    <div style={{ position: "relative" }} ref={menuRef}>
-      <nav style={s.nav} className="aml-navbar">
-        {/* ── Brand ── */}
-        <Link
-          to={isAdmin ? "/admin" : "/dashboard"}
-          style={s.brand}
-        >
-          <div style={s.brandName}>AML MOTORS</div>
-          <div style={s.brandSub}>{isAdmin ? "Admin Portal" : "Technician Portal"}</div>
-        </Link>
+    <div className="aml-nav-root" ref={menuRef}>
+
+      {/* 3px accent stripe */}
+      <div className="aml-nav-stripe" />
+
+      {/* Main bar */}
+      <div className="aml-nav-bar">
+
+        {/* ── Left: Brand + desktop nav links ── */}
+        <div className="aml-nav-left">
+
+          <Link to={isAdmin ? "/admin" : "/dashboard"} className="aml-brand">
+            <div className="aml-brand-name">AML MOTORS</div>
+            <div className="aml-brand-sub">
+              {isAdmin ? "Admin Portal" : "Technician Portal"}
+            </div>
+          </Link>
+
+          {/* Separator + desktop nav — admin only, visible ≥640px via CSS */}
+          {isAdmin && (
+            <>
+              <div className="aml-brand-sep" />
+              <nav className="aml-desktop-nav" aria-label="Admin navigation">
+                {ADMIN_NAV.map(({ path, label }) => (
+                  <Link
+                    key={path}
+                    to={path}
+                    className={`aml-desktop-link${location.pathname === path ? " active" : ""}`}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </nav>
+            </>
+          )}
+        </div>
 
         {/* ── Right cluster ── */}
-        <div style={s.right}>
+        <div className="aml-nav-right">
+
+          <div className="aml-vert-sep" />
+
           {/* User info */}
-          <div style={s.userBlock}>
-            <div style={s.userName}>{user?.name}</div>
-            {user?.branch && <div style={s.userBranch}>{user.branch}</div>}
+          <div className="aml-user">
+            <div className="aml-user-name">{user?.name}</div>
+            {isAdmin
+              ? <div className="aml-user-role">Administrator</div>
+              : user?.branch
+                ? <div className="aml-user-branch">{user.branch}</div>
+                : null
+            }
           </div>
 
-          {/* Technician: just Sign Out, no nav links */}
+          {/* Technician: Sign Out always visible in bar */}
           {!isAdmin && (
+            <button className="aml-signout" onClick={handleLogout}>
+              Sign Out
+            </button>
+          )}
+
+          {/* Admin desktop: Sign Out (hidden on mobile via CSS) */}
+          {isAdmin && (
             <button
+              className="aml-signout aml-signout-desktop"
               onClick={handleLogout}
-              style={s.signOut}
-              onMouseOver={e => {
-                e.currentTarget.style.borderColor = "#EF4444";
-                e.currentTarget.style.color = "#EF4444";
-              }}
-              onMouseOut={e => {
-                e.currentTarget.style.borderColor = "#27272A";
-                e.currentTarget.style.color = "#71717A";
-              }}
             >
               Sign Out
             </button>
           )}
 
-          {/* Admin: hamburger menu */}
+          {/* Admin mobile: Hamburger (hidden on desktop via CSS) */}
           {isAdmin && (
             <button
-              onClick={() => setMenuOpen(o => !o)}
-              style={{
-                ...s.burger,
-                borderColor: menuOpen ? "#52525B" : "#27272A",
-                color: menuOpen ? "#FAFAFA" : "#A1A1AA",
-              }}
-              aria-label="Toggle menu"
+              className={`aml-burger${menuOpen ? " open" : ""}`}
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
               aria-expanded={menuOpen}
             >
-              {/* animated hamburger → X */}
-              <span style={{
-                ...s.burgerLine,
-                transform: menuOpen ? "translateY(5.5px) rotate(45deg)" : "none",
+              <span className="aml-burger-line" style={{
+                transform: menuOpen ? "translateY(6px) rotate(45deg)" : "none",
               }} />
-              <span style={{
-                ...s.burgerLine,
+              <span className="aml-burger-line" style={{
                 opacity: menuOpen ? 0 : 1,
               }} />
-              <span style={{
-                ...s.burgerLine,
-                transform: menuOpen ? "translateY(-5.5px) rotate(-45deg)" : "none",
+              <span className="aml-burger-line" style={{
+                transform: menuOpen ? "translateY(-6px) rotate(-45deg)" : "none",
               }} />
             </button>
           )}
         </div>
-      </nav>
+      </div>
 
-      {/* ── Admin slide-down menu ── */}
+      {/* ── Admin mobile slide-down menu ── */}
       {isAdmin && (
         <div
+          className="aml-mobile-menu"
           style={{
-            ...s.menuWrapper,
-            maxHeight: menuOpen ? "400px" : "0px",
-            opacity: menuOpen ? 1 : 0,
+            maxHeight:     menuOpen ? "400px" : "0px",
+            opacity:       menuOpen ? 1 : 0,
             pointerEvents: menuOpen ? "auto" : "none",
           }}
           aria-hidden={!menuOpen}
         >
-          <div style={s.menuInner}>
-            {ADMIN_NAV.map(({ path, label }) => (
-              <AdminMenuLink key={path} path={path} label={label} />
-            ))}
-            <div style={s.menuSeparator} />
-            {/* Sign out inside menu for admin */}
-            <button
-              onClick={handleLogout}
-              style={{
-                ...s.signOut,
-                textAlign: "left",
-                padding: "10px 4px",
-                border: "none",
-                fontSize: "11px",
-                letterSpacing: "0.12em",
-              }}
-              onMouseOver={e => { e.currentTarget.style.color = "#EF4444"; }}
-              onMouseOut={e => { e.currentTarget.style.color = "#71717A"; }}
-            >
+          <div className="aml-mobile-menu-inner">
+            {ADMIN_NAV.map(({ path, label }) => {
+              const active = location.pathname === path;
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={`aml-mobile-link${active ? " active" : ""}`}
+                >
+                  {active && <span className="aml-mobile-active-bar" />}
+                  {label}
+                </Link>
+              );
+            })}
+            <div className="aml-mobile-sep" />
+            <button className="aml-mobile-signout" onClick={handleLogout}>
               Sign Out
             </button>
           </div>
