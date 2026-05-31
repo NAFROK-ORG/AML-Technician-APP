@@ -10,6 +10,7 @@ const C = {
   blue:   "#4C70F5", blueL:  "#7A98F8",
   green:  "#10C090", greenL: "#4DD8B6",
   amber:  "#E8A000",
+  red:    "#E04848",
 };
 
 const RANK = [
@@ -23,13 +24,27 @@ export default function AdminTechnicianList() {
   const navigate   = useNavigate();
 
   const [technicians, setTechnicians] = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [search, setSearch]           = useState("");
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState("");   // ← handles 403 + other errors
+  const [search,      setSearch]      = useState("");
 
   useEffect(() => {
+    setLoading(true);
+    setError("");
     api.get(`/api/admin/branch/${encodeURIComponent(branch)}/technicians`)
       .then(r => setTechnicians(r.data))
-      .catch(console.error)
+      .catch(err => {
+        /**
+         * 403 means a branch admin tried to access a branch that is not theirs.
+         * This can happen if they manually edit the URL. Show a clear message
+         * instead of a silent empty list.
+         */
+        if (err.response?.status === 403) {
+          setError("Access denied: This branch is not assigned to your account. Please contact your developer.");
+        } else {
+          setError("Failed to load technicians. Please try again.");
+        }
+      })
       .finally(() => setLoading(false));
   }, [branch]);
 
@@ -45,10 +60,8 @@ export default function AdminTechnicianList() {
 
   return (
     <div style={{
-      minHeight: "100dvh",
-      background: C.bg,
-      fontFamily: "'IBM Plex Sans', sans-serif",
-      color: C.text,
+      minHeight: "100dvh", background: C.bg,
+      fontFamily: "'IBM Plex Sans', sans-serif", color: C.text,
     }}>
       <Navbar />
 
@@ -75,10 +88,9 @@ export default function AdminTechnicianList() {
             <h1 style={{
               fontSize: "30px", fontWeight: "800", margin: 0,
               fontFamily: "'Barlow Condensed', sans-serif",
-              letterSpacing: "0.05em", textTransform: "uppercase",
-              color: "#FFFFFF",
+              letterSpacing: "0.05em", textTransform: "uppercase", color: "#FFFFFF",
             }}>{branch}</h1>
-            {!loading && (
+            {!loading && !error && (
               <span style={{
                 fontSize: "10px", fontWeight: "700", color: C.muted,
                 letterSpacing: "0.14em", textTransform: "uppercase",
@@ -92,7 +104,7 @@ export default function AdminTechnicianList() {
         </div>
 
         {/* ── Search ── */}
-        {!loading && technicians.length > 2 && (
+        {!loading && !error && technicians.length > 2 && (
           <div style={{ marginBottom: "20px", position: "relative" }}>
             <span style={{
               position: "absolute", left: "13px", top: "50%",
@@ -100,8 +112,7 @@ export default function AdminTechnicianList() {
               fontSize: "14px", color: C.dim, pointerEvents: "none",
             }}>⌕</span>
             <input
-              type="text"
-              value={search}
+              type="text" value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search name, ID…"
               style={{
@@ -109,8 +120,7 @@ export default function AdminTechnicianList() {
                 background: C.card, border: `1px solid ${C.border}`,
                 borderRadius: "8px", color: C.text, fontSize: "14px",
                 padding: "12px 40px 12px 36px",
-                fontFamily: "'IBM Plex Sans', sans-serif", outline: "none",
-                height: "46px",
+                fontFamily: "'IBM Plex Sans', sans-serif", outline: "none", height: "46px",
               }}
               onFocus={e => e.target.style.borderColor = C.blue}
               onBlur={e => e.target.style.borderColor = C.border}
@@ -123,8 +133,7 @@ export default function AdminTechnicianList() {
                   transform: "translateY(-50%)",
                   background: "none", border: "none",
                   color: C.muted, cursor: "pointer", fontSize: "18px",
-                  lineHeight: 1, padding: "0",
-                  WebkitTapHighlightColor: "transparent",
+                  lineHeight: 1, padding: "0", WebkitTapHighlightColor: "transparent",
                 }}
               >×</button>
             )}
@@ -136,16 +145,45 @@ export default function AdminTechnicianList() {
           <div style={{ textAlign: "center", padding: "80px 0", color: C.dim }}>
             <div style={{
               width: "24px", height: "24px",
-              border: `2px solid ${C.border}`,
-              borderTop: `2px solid ${C.blue}`,
-              borderRadius: "50%",
-              margin: "0 auto 16px",
+              border: `2px solid ${C.border}`, borderTop: `2px solid ${C.blue}`,
+              borderRadius: "50%", margin: "0 auto 16px",
               animation: "spin 0.8s linear infinite",
             }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             <p style={{ fontSize: "11px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
               Loading…
             </p>
+          </div>
+
+        ) : error ? (
+          /**
+           * Error state — shown for 403 (branch mismatch) and other failures.
+           * The message is already specific from the catch block above.
+           */
+          <div style={{
+            background: "rgba(224,72,72,0.06)", border: `1px solid rgba(224,72,72,0.25)`,
+            borderRadius: "4px", padding: "32px 24px", textAlign: "center",
+          }}>
+            <div style={{ fontSize: "28px", marginBottom: "12px" }}>🔒</div>
+            <p style={{ fontSize: "14px", color: C.red, fontWeight: "600", marginBottom: "8px" }}>
+              Access Denied
+            </p>
+            <p style={{ fontSize: "12px", color: C.muted, lineHeight: 1.6 }}>
+              {error}
+            </p>
+            <button
+              onClick={() => navigate("/admin")}
+              style={{
+                marginTop: "20px", padding: "8px 20px",
+                background: "transparent", border: `1px solid ${C.border}`,
+                borderRadius: "3px", color: C.muted,
+                fontSize: "11px", fontWeight: "600", letterSpacing: "0.10em",
+                textTransform: "uppercase", cursor: "pointer",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}
+            >
+              ← Back to Dashboard
+            </button>
           </div>
 
         ) : technicians.length === 0 ? (
@@ -181,101 +219,79 @@ export default function AdminTechnicianList() {
                   key={tech.id}
                   onClick={() => navigate(`/admin/technician/${tech.id}`)}
                   style={{
-                    background: C.card,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "12px",
-                    padding: "16px",
-                    cursor: "pointer",
-                    WebkitTapHighlightColor: "transparent",
+                    background: C.card, border: `1px solid ${C.border}`,
+                    borderRadius: "12px", padding: "16px",
+                    cursor: "pointer", WebkitTapHighlightColor: "transparent",
                     transition: "border-color 0.15s, background 0.15s",
                     touchAction: "manipulation",
                   }}
                   onTouchStart={e => {
-                    e.currentTarget.style.background = "rgba(76,112,245,0.06)";
-                    e.currentTarget.style.borderColor = C.blue;
+                    e.currentTarget.style.background    = "rgba(76,112,245,0.06)";
+                    e.currentTarget.style.borderColor   = C.blue;
                   }}
                   onTouchEnd={e => {
-                    e.currentTarget.style.background = C.card;
-                    e.currentTarget.style.borderColor = C.border;
+                    e.currentTarget.style.background    = C.card;
+                    e.currentTarget.style.borderColor   = C.border;
                   }}
                   onMouseOver={e => {
-                    e.currentTarget.style.borderColor = C.blue;
-                    e.currentTarget.style.background = "rgba(76,112,245,0.04)";
+                    e.currentTarget.style.borderColor   = C.blue;
+                    e.currentTarget.style.background    = "rgba(76,112,245,0.04)";
                   }}
                   onMouseOut={e => {
-                    e.currentTarget.style.borderColor = C.border;
-                    e.currentTarget.style.background = C.card;
+                    e.currentTarget.style.borderColor   = C.border;
+                    e.currentTarget.style.background    = C.card;
                   }}
                 >
-                  {/* ── Top row: name + arrow ── */}
+                  {/* Top row */}
                   <div style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: "14px",
+                    display: "flex", justifyContent: "space-between",
+                    alignItems: "flex-start", marginBottom: "14px",
                   }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      {/* Name + rank badge */}
-                      <div style={{
-                        display: "flex", alignItems: "center", gap: "8px",
-                        marginBottom: "4px",
-                      }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                         <span style={{
                           fontSize: "18px", fontWeight: "700", color: "#FFFFFF",
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          letterSpacing: "0.04em",
+                          fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>{tech.name}</span>
                         {r && (
                           <span style={{
-                            fontSize: "9px", fontWeight: "800",
-                            letterSpacing: "0.12em", color: r.color,
-                            background: `${r.color}18`,
-                            border: `1px solid ${r.color}40`,
-                            borderRadius: "3px",
-                            padding: "2px 5px",
-                            flexShrink: 0,
+                            fontSize: "9px", fontWeight: "800", letterSpacing: "0.12em",
+                            color: r.color, background: `${r.color}18`,
+                            border: `1px solid ${r.color}40`, borderRadius: "3px",
+                            padding: "2px 5px", flexShrink: 0,
                           }}>{r.label}</span>
                         )}
                       </div>
-                      {/* Technician ID */}
                       <span style={{
                         fontSize: "11px", color: C.blue,
-                        fontFamily: "'IBM Plex Mono', monospace",
-                        letterSpacing: "0.08em",
+                        fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.08em",
                       }}>{tech.technicianId}</span>
                     </div>
-
                     <span style={{
                       color: C.dim, fontSize: "18px",
-                      marginLeft: "12px", flexShrink: 0,
-                      lineHeight: 1, marginTop: "2px",
+                      marginLeft: "12px", flexShrink: 0, lineHeight: 1, marginTop: "2px",
                     }}>›</span>
                   </div>
 
-                  {/* ── Stats row ── */}
+                  {/* Stats row */}
                   <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "8px",
-                    paddingTop: "12px",
-                    borderTop: `1px solid ${C.border2}`,
+                    display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "8px", paddingTop: "12px", borderTop: `1px solid ${C.border2}`,
                   }}>
                     {[
-                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",         color: C.text  },
-                      { label: "Hours",   value: tech.totalHours?.toLocaleString("en-IN") ?? "0",           color: C.greenL },
-                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber  },
+                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",             color: C.text   },
+                      { label: "Hours",   value: tech.totalHours?.toLocaleString("en-IN")   ?? "0",             color: C.greenL },
+                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`,   color: C.amber  },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ textAlign: "center" }}>
                         <div style={{
-                          fontSize: "9px", fontWeight: "700",
-                          letterSpacing: "0.12em", textTransform: "uppercase",
-                          color: C.dim, marginBottom: "4px",
+                          fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
+                          textTransform: "uppercase", color: C.dim, marginBottom: "4px",
                         }}>{label}</div>
                         <div style={{
                           fontSize: "15px", fontWeight: "700", color,
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          letterSpacing: "0.02em",
+                          fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
                         }}>{value}</div>
                       </div>
                     ))}
@@ -286,8 +302,8 @@ export default function AdminTechnicianList() {
           </div>
         )}
 
-        {/* ── Footer count ── */}
-        {!loading && filtered.length > 0 && search && (
+        {/* Footer count */}
+        {!loading && !error && filtered.length > 0 && search && (
           <p style={{
             fontSize: "11px", color: C.dim, marginTop: "14px",
             letterSpacing: "0.08em", textAlign: "right",
