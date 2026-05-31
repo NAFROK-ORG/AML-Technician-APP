@@ -1,31 +1,34 @@
-import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 
-const ProtectedRoute = ({ children, role }) => {
+/**
+ * ProtectedRoute
+ *
+ * Props:
+ *   role  — string ("technician") or array (["admin", "superadmin"])
+ *           Defines which roles are allowed to render children.
+ *
+ * Redirect logic when role doesn't match:
+ *   technician → /dashboard
+ *   admin      → /admin
+ *   superadmin → /admin
+ *
+ * This means if a technician tries to hit /admin they go to /dashboard,
+ * and if an admin/superadmin tries to hit /dashboard they go to /admin.
+ */
+export default function ProtectedRoute({ role, children }) {
   const { token, user } = useAuthStore();
-  const [hydrated, setHydrated] = useState(
-    () => useAuthStore.persist.hasHydrated()
-  );
 
-  useEffect(() => {
-    if (!hydrated) {
-      const unsub = useAuthStore.persist.onFinishHydration(() => {
-        setHydrated(true);
-      });
-      return () => unsub();
-    }
-  }, [hydrated]);
-
-  if (!hydrated) return null; // wait — don't redirect yet
-
+  // No session at all → login
   if (!token || !user) return <Navigate to="/login" replace />;
 
-  if (role && user.role !== role) {
-    return <Navigate to={user.role === "admin" ? "/admin" : "/dashboard"} replace />;
+  const allowedRoles = Array.isArray(role) ? role : [role];
+
+  if (!allowedRoles.includes(user.role)) {
+    // Send them to the right home for their actual role
+    if (user.role === "technician") return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/admin" replace />; // admin and superadmin
   }
 
   return children;
-};
-
-export default ProtectedRoute;
+}
