@@ -230,8 +230,8 @@ export default function AdminAnalytics() {
             </h1>
             <p style={{ color: "#8BA3C7", fontSize: 14 }}>
               {isBranchAdmin
-                ? `${user?.branch || ""} branch performance · Ashok Leyland`
-                : "Cross-branch performance intelligence · Ashok Leyland"}
+                ? `${user?.branch || ""} branch performance · AML MOTORS`
+                : "Cross-branch performance intelligence · AML MOTORS"}
             </p>
           </div>
           <button
