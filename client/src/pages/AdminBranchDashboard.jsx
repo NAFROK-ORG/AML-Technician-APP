@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
+import { useAuthStore } from "../store/authStore";
 
 /* ─── Design tokens ─────────────────────────────────────────────────── */
 const C = {
@@ -12,60 +13,23 @@ const C = {
   green:   "#10C090", greenL: "#4DD8B6",
   amber:   "#E8A000", amberL: "#FFC033",
   red:     "#E04848",
+  purple:  "#7C3AED",
 };
 
 /* ─── Category config ───────────────────────────────────────────────── */
 const CAT = {
-  "ENGINE REPAIR": {
-    bar: "#2563EB",
-    label: "#60A5FA",
-  },
-
-  "GEAR BOX": {
-    bar: "#DC2626",
-    label: "#F87171",
-  },
-
-  "ELECTRICAL": {
-    bar: "#F59E0B",
-    label: "#FBBF24",
-  },
-
-  "BODY WORK": {
-    bar: "#16A34A",
-    label: "#4ADE80",
-  },
-
-  "DIFFERENTIAL": {
-    bar: "#DB2777",
-    label: "#F472B6",
-  },
-
-  "TRANSMISSION": {
-    bar: "#7C3AED",
-    label: "#A78BFA",
-  },
-
-  "AC & COOLING": {
-    bar: "#0891B2",
-    label: "#67E8F9",
-  },
-
-  "EATS FLUSHING": {
-    bar: "#92400E",
-    label: "#D97706",
-  },
-
-  "GENERAL SERVICE": {
-    bar: "#EA580C",
-    label: "#FB923C",
-  },
-
-  "SCHEDULE SERVICE": {
-    bar: "#4F46E5",
-    label: "#818CF8",
-  },
+  "ENGINE REPAIR":    { bar: "#2563EB", label: "#60A5FA" },
+  "GEAR BOX":         { bar: "#DC2626", label: "#F87171" },
+  "ELECTRICAL":       { bar: "#F59E0B", label: "#FBBF24" },
+  "BODY WORK":        { bar: "#16A34A", label: "#4ADE80" },
+  "DIFFERENTIAL":     { bar: "#DB2777", label: "#F472B6" },
+  "TRANSMISSION":     { bar: "#7C3AED", label: "#A78BFA" },
+  "AC & COOLING":     { bar: "#0891B2", label: "#67E8F9" },
+  "EATS FLUSHING":    { bar: "#92400E", label: "#D97706" },
+  "GENERAL SERVICE":  { bar: "#EA580C", label: "#FB923C" },
+  "SCHEDULE SERVICE": { bar: "#4F46E5", label: "#818CF8" },
 };
+
 /* ─── KPI card ─────────────────────────────────────────────────────── */
 function KpiCard({ label, value, unit, accent = C.blue }) {
   return (
@@ -73,7 +37,6 @@ function KpiCard({ label, value, unit, accent = C.blue }) {
       background: C.card, border: `1px solid ${C.border}`,
       borderRadius: "4px", padding: "16px 18px",
       borderLeft: `3px solid ${accent}`,
-      transition: "border-color 0.15s",
     }}>
       <p style={{
         fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
@@ -96,42 +59,72 @@ function KpiCard({ label, value, unit, accent = C.blue }) {
 
 /* ─── Stat definitions ──────────────────────────────────────────────── */
 const STATS = [
-  { key: "technicianCount",       label: "Technicians",     unit: "",        accent: C.blue,  fmt: v => v },
-  { key: "totalEntries",          label: "Job Cards",       unit: "total",   accent: C.blueL, fmt: v => Number(v).toLocaleString("en-IN") },
-  { key: "totalHours",            label: "Hours Worked",    unit: "hrs",     accent: C.green, fmt: v => Number(v).toLocaleString("en-IN") },
-  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",unit: "hrs avg", accent: C.greenL,fmt: v => v },
-  { key: "totalLabour",           label: "Total Labour",    unit: "",        accent: C.amber, fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
-  { key: "totalIncentives",       label: "Incentives Paid", unit: "",        accent: C.amberL,fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
-  { key: "totalLeaveDays",        label: "Leave Days",      unit: "days",    accent: C.dim,   fmt: v => v },
+  { key: "technicianCount",       label: "Technicians",      unit: "",        accent: C.blue,   fmt: v => v },
+  { key: "totalEntries",          label: "Job Cards",         unit: "total",   accent: C.blueL,  fmt: v => Number(v).toLocaleString("en-IN") },
+  { key: "totalHours",            label: "Hours Worked",      unit: "hrs",     accent: C.green,  fmt: v => Number(v).toLocaleString("en-IN") },
+  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",  unit: "hrs avg", accent: C.greenL, fmt: v => v },
+  { key: "totalLabour",           label: "Total Labour",      unit: "",        accent: C.amber,  fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
+  { key: "totalIncentives",       label: "Incentives Paid",   unit: "",        accent: C.amberL, fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
+  { key: "totalLeaveDays",        label: "Leave Days",        unit: "days",    accent: C.dim,    fmt: v => v },
 ];
 
 /* ─── Main ──────────────────────────────────────────────────────────── */
 export default function AdminBranchDashboard() {
-  const navigate = useNavigate();
-  const [branches, setBranches]   = useState([]);
-  const [selected, setSelected]   = useState("");
-  const [stats, setStats]         = useState(null);
-  const [loadingB, setLoadingB]   = useState(true);
-  const [loadingS, setLoadingS]   = useState(false);
+  const navigate        = useNavigate();
+  const { user }        = useAuthStore();
 
+  /**
+   * Role flags:
+   *   isSuperAdmin — sees ALL branches, has pill selector, fetches branch list
+   *   isBranchAdmin — sees ONLY their assigned branch, no selector, no branch fetch
+   */
+  const isSuperAdmin  = user?.role === "superadmin";
+  const isBranchAdmin = user?.role === "admin";
+
+  /**
+   * Branch selection:
+   *   Superadmin  → starts empty, filled after GET /api/admin/branches resolves
+   *   Branch admin → pre-set to user.branch immediately (no fetch needed, no selector shown)
+   *
+   * CRITICAL: branch admins must NEVER call GET /api/admin/branches —
+   * that route is superAdminOnly and would return 403, breaking the page on load.
+   */
+  const [branches,  setBranches]  = useState([]);
+  const [selected,  setSelected]  = useState(isBranchAdmin ? (user?.branch || "") : "");
+  const [stats,     setStats]     = useState(null);
+  const [loadingB,  setLoadingB]  = useState(isSuperAdmin); // only superadmin shows branch-loading state
+  const [loadingS,  setLoadingS]  = useState(false);
+
+  /* ── Fetch branch list — superadmin only ── */
   useEffect(() => {
+    if (!isSuperAdmin) return; // branch admins skip this entirely
+
     api.get("/api/admin/branches")
-      .then(r => { setBranches(r.data); if (r.data.length) setSelected(r.data[0]); })
+      .then(r => {
+        setBranches(r.data);
+        if (r.data.length) setSelected(r.data[0]);
+      })
       .catch(console.error)
       .finally(() => setLoadingB(false));
-  }, []);
+  }, [isSuperAdmin]);
 
+  /* ── Fetch stats for selected branch — both roles ── */
   useEffect(() => {
     if (!selected) return;
-    setLoadingS(true); setStats(null);
+    setLoadingS(true);
+    setStats(null);
     api.get(`/api/admin/branch/${encodeURIComponent(selected)}`)
       .then(r => setStats(r.data))
       .catch(console.error)
       .finally(() => setLoadingS(false));
   }, [selected]);
 
+  /* ── Render ── */
   return (
-    <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: "'IBM Plex Sans', sans-serif", color: C.text }}>
+    <div style={{
+      minHeight: "100dvh", background: C.bg,
+      fontFamily: "'IBM Plex Sans', sans-serif", color: C.text,
+    }}>
       <Navbar />
 
       <div style={{ padding: "28px 16px 48px", maxWidth: "960px", margin: "0 auto" }}>
@@ -154,45 +147,75 @@ export default function AdminBranchDashboard() {
             )}
           </div>
           <p style={{ color: C.muted, fontSize: "13px", marginTop: "6px" }}>
-            Performance overview by branch
+            {isSuperAdmin
+              ? "Performance overview · All Branches"
+              : `Performance overview · ${user?.branch || ""} Branch`}
           </p>
         </div>
 
-        {/* ── Branch selector ── */}
-        {loadingB ? (
-          <p style={{ color: C.dim, fontSize: "12px", letterSpacing: "0.12em" }}>LOADING BRANCHES…</p>
-        ) : branches.length === 0 ? (
-          <div style={{
-            background: C.card, border: `1px solid ${C.border}`, borderRadius: "4px",
-            padding: "48px", textAlign: "center", color: C.muted, fontSize: "14px",
-          }}>
-            No branches found. Technicians need to complete profile setup first.
-          </div>
-        ) : (
-          <div style={{
-            display: "flex", gap: "6px", overflowX: "auto",
-            paddingBottom: "4px", marginBottom: "32px",
-            WebkitOverflowScrolling: "touch", scrollbarWidth: "none",
-          }}>
-            {branches.map(b => {
-              const active = selected === b;
-              return (
-                <button key={b} onClick={() => setSelected(b)} style={{
-                  padding: "7px 18px",
-                  border: `1px solid ${active ? C.blue : C.border}`,
-                  background: active ? "rgba(76,112,245,0.10)" : "transparent",
-                  color: active ? C.blueL : C.muted,
-                  fontWeight: active ? "700" : "500",
-                  fontSize: "11px", letterSpacing: "0.12em",
-                  textTransform: "uppercase", cursor: "pointer",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                  borderRadius: "3px", whiteSpace: "nowrap",
-                  flexShrink: 0, transition: "all 0.15s",
-                }}>
-                  {b}
-                </button>
-              );
-            })}
+        {/* ── Branch selector — SUPERADMIN ONLY ── */}
+        {isSuperAdmin && (
+          loadingB ? (
+            <p style={{ color: C.dim, fontSize: "12px", letterSpacing: "0.12em" }}>
+              LOADING BRANCHES…
+            </p>
+          ) : branches.length === 0 ? (
+            <div style={{
+              background: C.card, border: `1px solid ${C.border}`, borderRadius: "4px",
+              padding: "48px", textAlign: "center", color: C.muted, fontSize: "14px",
+            }}>
+              No branches found. Technicians need to complete profile setup first.
+            </div>
+          ) : (
+            <div style={{
+              display: "flex", gap: "6px", overflowX: "auto",
+              paddingBottom: "4px", marginBottom: "32px",
+              WebkitOverflowScrolling: "touch", scrollbarWidth: "none",
+            }}>
+              {branches.map(b => {
+                const active = selected === b;
+                return (
+                  <button key={b} onClick={() => setSelected(b)} style={{
+                    padding: "7px 18px",
+                    border: `1px solid ${active ? C.blue : C.border}`,
+                    background: active ? "rgba(76,112,245,0.10)" : "transparent",
+                    color: active ? C.blueL : C.muted,
+                    fontWeight: active ? "700" : "500",
+                    fontSize: "11px", letterSpacing: "0.12em",
+                    textTransform: "uppercase", cursor: "pointer",
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    borderRadius: "3px", whiteSpace: "nowrap",
+                    flexShrink: 0, transition: "all 0.15s",
+                  }}>
+                    {b}
+                  </button>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {/* ── Branch badge — BRANCH ADMIN ONLY ── */}
+        {isBranchAdmin && selected && (
+          <div style={{ marginBottom: "32px" }}>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: "10px",
+              background: "rgba(76,112,245,0.08)",
+              border: `1px solid rgba(76,112,245,0.25)`,
+              borderRadius: "4px", padding: "8px 16px",
+            }}>
+              <div style={{
+                width: "6px", height: "6px", borderRadius: "50%",
+                background: C.blue, flexShrink: 0,
+              }} />
+              <span style={{
+                fontSize: "11px", fontWeight: "700", letterSpacing: "0.14em",
+                textTransform: "uppercase", color: C.blueL,
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}>
+                {selected} Branch
+              </span>
+            </div>
           </div>
         )}
 
@@ -269,21 +292,18 @@ export default function AdminBranchDashboard() {
                       letterSpacing: "0.14em", textTransform: "uppercase",
                       color: C.muted, margin: 0,
                     }}>Category Breakdown</p>
-                    <p style={{
-                      fontSize: "10px", color: C.dim,
-                      letterSpacing: "0.08em",
-                    }}>
+                    <p style={{ fontSize: "10px", color: C.dim, letterSpacing: "0.08em" }}>
                       {stats.categoryBreakdown.reduce((a, c) => a + c.count, 0)} entries
                     </p>
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
                     {stats.categoryBreakdown.map(({ _id, count }) => {
-                      const max = stats.categoryBreakdown[0].count;
-                      const pct = Math.round((count / max) * 100);
+                      const max       = stats.categoryBreakdown[0].count;
+                      const pct       = Math.round((count / max) * 100);
                       const totalCount = stats.categoryBreakdown.reduce((a, c) => a + c.count, 0);
-                      const sharePct = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
-                      const c = CAT[_id] || { bar: C.blue, label: C.blueL };
+                      const sharePct  = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
+                      const cat       = CAT[_id] || { bar: C.blue, label: C.blueL };
                       return (
                         <div key={_id}>
                           <div style={{
@@ -293,7 +313,7 @@ export default function AdminBranchDashboard() {
                             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                               <div style={{
                                 width: "8px", height: "8px", borderRadius: "2px",
-                                background: c.bar, flexShrink: 0,
+                                background: cat.bar, flexShrink: 0,
                               }} />
                               <span style={{ fontSize: "13px", color: "#B0B0CC", fontWeight: "500" }}>
                                 {_id}
@@ -302,8 +322,7 @@ export default function AdminBranchDashboard() {
                             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
                               <span style={{ fontSize: "11px", color: C.muted }}>{sharePct}%</span>
                               <span style={{
-                                fontSize: "14px", fontWeight: "700",
-                                color: c.label,
+                                fontSize: "14px", fontWeight: "700", color: cat.label,
                                 fontFamily: "'IBM Plex Mono', monospace",
                                 minWidth: "28px", textAlign: "right",
                               }}>{count}</span>
@@ -315,7 +334,7 @@ export default function AdminBranchDashboard() {
                           }}>
                             <div style={{
                               width: `${pct}%`, height: "100%",
-                              background: c.bar, borderRadius: "2px",
+                              background: cat.bar, borderRadius: "2px",
                               transition: "width 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
                             }} />
                           </div>
