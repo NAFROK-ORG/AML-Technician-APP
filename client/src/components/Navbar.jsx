@@ -4,9 +4,8 @@ import { useAuthStore } from "../store/authStore";
 
 /* ─── Admin nav items ──────────────────────────────────────────── */
 const ADMIN_NAV = [
-  { path: "/admin",            label: "Dashboard" },
-  { path: "/admin/analytics",  label: "Analytics" },
-  // add more admin routes here as needed
+  { path: "/admin",           label: "Dashboard" },
+  { path: "/admin/analytics", label: "Analytics" },
 ];
 
 /* ─── Injected styles ──────────────────────────────────────────── */
@@ -21,7 +20,7 @@ const NAV_STYLES = `
     -webkit-font-smoothing: antialiased;
   }
 
-  /* 3px brand stripe — matches Login/Signup */
+  /* 3px brand stripe */
   .aml-nav-stripe {
     height: 3px;
     background: #1E3A8A;
@@ -39,7 +38,7 @@ const NAV_STYLES = `
     padding: 0 16px;
   }
 
-  /* Left side: brand + desktop nav */
+  /* Left side */
   .aml-nav-left {
     display: flex;
     align-items: center;
@@ -72,7 +71,7 @@ const NAV_STYLES = `
     margin-top: 2px;
   }
 
-  /* Brand/nav divider — desktop only */
+  /* Brand/nav divider */
   .aml-brand-sep {
     display: none;
     width: 1px;
@@ -82,7 +81,7 @@ const NAV_STYLES = `
     flex-shrink: 0;
   }
 
-  /* Desktop nav links — admin only, ≥640px */
+  /* Desktop nav links */
   .aml-desktop-nav {
     display: none;
     align-items: center;
@@ -100,7 +99,7 @@ const NAV_STYLES = `
     color: #6B7A99;
     text-decoration: none;
     border-bottom: 2px solid transparent;
-    margin-bottom: -1px; /* flush with nav bottom border */
+    margin-bottom: -1px;
     white-space: nowrap;
     transition: color 0.15s ease, border-color 0.15s ease;
   }
@@ -143,6 +142,7 @@ const NAV_STYLES = `
     margin-top: 3px;
     font-weight: 600;
   }
+  /* Generic role line — blue for admin/superadmin */
   .aml-user-role {
     font-size: 8px;
     letter-spacing: 0.12em;
@@ -150,6 +150,10 @@ const NAV_STYLES = `
     text-transform: uppercase;
     margin-top: 3px;
     font-weight: 600;
+  }
+  /* Superadmin gets a slightly different accent so it's visually distinct */
+  .aml-user-role--superadmin {
+    color: #7C3AED;
   }
 
   /* Sign Out button */
@@ -172,12 +176,10 @@ const NAV_STYLES = `
   .aml-signout:hover  { border-color: #DC2626; color: #DC2626; background: #FEF2F2; }
   .aml-signout:active { background: #FEE2E2; }
 
-  /* Admin desktop sign-out — hidden on mobile, shown ≥640px */
-  .aml-signout-desktop {
-    display: none;
-  }
+  /* Admin desktop sign-out — hidden on mobile */
+  .aml-signout-desktop { display: none; }
 
-  /* Hamburger — shown on mobile only (admin) */
+  /* Hamburger — mobile only */
   .aml-burger {
     display: flex;
     flex-direction: column;
@@ -259,25 +261,21 @@ const NAV_STYLES = `
   }
   .aml-mobile-signout:hover { color: #DC2626; }
 
-  /* ── Desktop breakpoint ≥640px ──────────────────────────────── */
+  /* ── Desktop breakpoint ≥640px ── */
   @media (min-width: 640px) {
     .aml-nav-bar    { padding: 0 24px; }
     .aml-nav-right  { gap: 14px; }
-
-    /* Show brand separator + desktop nav links */
     .aml-brand-sep   { display: block; }
     .aml-desktop-nav { display: flex; }
-
-    /* Show admin desktop sign-out, hide hamburger + mobile menu */
     .aml-signout-desktop { display: block; }
     .aml-burger          { display: none; }
     .aml-mobile-menu     { display: none !important; }
   }
 
   @media (min-width: 1024px) {
-    .aml-nav-bar      { padding: 0 32px; }
-    .aml-brand-name   { font-size: 19px; }
-    .aml-user-name    { max-width: 160px; }
+    .aml-nav-bar    { padding: 0 32px; }
+    .aml-brand-name { font-size: 19px; }
+    .aml-user-name  { max-width: 160px; }
   }
 `;
 
@@ -285,7 +283,15 @@ export default function Navbar() {
   const { user, logout } = useAuthStore();
   const navigate         = useNavigate();
   const location         = useLocation();
-  const isAdmin          = user?.role === "admin";
+
+  /**
+   * isAdminOrAbove — true for "admin" (branch) AND "superadmin".
+   * This replaces the old `isAdmin` which only checked for "admin"
+   * and left superadmins with a broken technician-style navbar.
+   */
+  const isAdminOrAbove = ["admin", "superadmin"].includes(user?.role);
+  const isSuperAdmin   = user?.role === "superadmin";
+  const isBranchAdmin  = user?.role === "admin";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef                 = useRef(null);
@@ -293,8 +299,7 @@ export default function Navbar() {
   /* inject styles once */
   useEffect(() => {
     const id = "aml-navbar-styles";
-    const existing = document.getElementById(id);
-    if (!existing) {
+    if (!document.getElementById(id)) {
       const el = document.createElement("style");
       el.id = id;
       el.textContent = NAV_STYLES;
@@ -325,6 +330,45 @@ export default function Navbar() {
     navigate("/login");
   };
 
+  /**
+   * Portal label under the brand name.
+   * superadmin → "Super Admin Portal"
+   * admin      → "Admin Portal"
+   * technician → "Technician Portal"
+   */
+  const portalLabel = isSuperAdmin
+    ? "Super Admin Portal"
+    : isBranchAdmin
+    ? "Admin Portal"
+    : "Technician Portal";
+
+  /**
+   * Role line shown under the user's name in the right cluster.
+   * superadmin  → purple "Super Admin"
+   * branch admin → blue "Branch Admin · <BranchName>"
+   * technician  → gray branch name (or nothing if branch not set yet)
+   */
+  const renderUserMeta = () => {
+    if (isSuperAdmin) {
+      return (
+        <div className="aml-user-role aml-user-role--superadmin">
+          Super Admin
+        </div>
+      );
+    }
+    if (isBranchAdmin) {
+      return (
+        <div className="aml-user-role">
+          Branch Admin{user?.branch ? ` · ${user.branch}` : ""}
+        </div>
+      );
+    }
+    // Technician
+    return user?.branch
+      ? <div className="aml-user-branch">{user.branch}</div>
+      : null;
+  };
+
   return (
     <div className="aml-nav-root" ref={menuRef}>
 
@@ -334,18 +378,18 @@ export default function Navbar() {
       {/* Main bar */}
       <div className="aml-nav-bar">
 
-        {/* ── Left: Brand + desktop nav links ── */}
+        {/* ── Left: Brand + desktop nav ── */}
         <div className="aml-nav-left">
-
-          <Link to={isAdmin ? "/admin" : "/dashboard"} className="aml-brand">
+          <Link
+            to={isAdminOrAbove ? "/admin" : "/dashboard"}
+            className="aml-brand"
+          >
             <div className="aml-brand-name">AML MOTORS</div>
-            <div className="aml-brand-sub">
-              {isAdmin ? "Admin Portal" : "Technician Portal"}
-            </div>
+            <div className="aml-brand-sub">{portalLabel}</div>
           </Link>
 
-          {/* Separator + desktop nav — admin only, visible ≥640px via CSS */}
-          {isAdmin && (
+          {/* Separator + desktop nav — admin/superadmin only, visible ≥640px */}
+          {isAdminOrAbove && (
             <>
               <div className="aml-brand-sep" />
               <nav className="aml-desktop-nav" aria-label="Admin navigation">
@@ -371,23 +415,18 @@ export default function Navbar() {
           {/* User info */}
           <div className="aml-user">
             <div className="aml-user-name">{user?.name}</div>
-            {isAdmin
-              ? <div className="aml-user-role">Administrator</div>
-              : user?.branch
-                ? <div className="aml-user-branch">{user.branch}</div>
-                : null
-            }
+            {renderUserMeta()}
           </div>
 
-          {/* Technician: Sign Out always visible in bar */}
-          {!isAdmin && (
+          {/* Technician: sign out always visible in bar */}
+          {!isAdminOrAbove && (
             <button className="aml-signout" onClick={handleLogout}>
               Sign Out
             </button>
           )}
 
-          {/* Admin desktop: Sign Out (hidden on mobile via CSS) */}
-          {isAdmin && (
+          {/* Admin/Superadmin desktop sign-out (hidden on mobile via CSS) */}
+          {isAdminOrAbove && (
             <button
               className="aml-signout aml-signout-desktop"
               onClick={handleLogout}
@@ -396,8 +435,8 @@ export default function Navbar() {
             </button>
           )}
 
-          {/* Admin mobile: Hamburger (hidden on desktop via CSS) */}
-          {isAdmin && (
+          {/* Admin/Superadmin mobile hamburger (hidden on desktop via CSS) */}
+          {isAdminOrAbove && (
             <button
               className={`aml-burger${menuOpen ? " open" : ""}`}
               onClick={() => setMenuOpen((o) => !o)}
@@ -418,8 +457,8 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* ── Admin mobile slide-down menu ── */}
-      {isAdmin && (
+      {/* ── Admin/Superadmin mobile slide-down menu ── */}
+      {isAdminOrAbove && (
         <div
           className="aml-mobile-menu"
           style={{
