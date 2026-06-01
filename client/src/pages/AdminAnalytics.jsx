@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -8,51 +7,290 @@ import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import { useAuthStore } from "../store/authStore";
 
-// ─── constants ────────────────────────────────────────────────────────────────
-const BRANCHES = [
-  "BALLARI",
-  "CHITRADURGA",
-  "HOSPET",
-];
+/* ─── Corporate light tokens ─────────────────────────────────────── */
+const C = {
+  pageBg:  "#EEF2F7",
+  card:    "#FFFFFF",
+  cardAlt: "#F8FAFC",
+  border:  "#DDE3EE",
+  borderL: "#F1F5F9",
+  navy:    "#1E3A8A",
+  navyHov: "#1E40AF",
+  ink:     "#0A1628",
+  mid:     "#374151",
+  muted:   "#6B7A99",
+  dim:     "#94A3B8",
+  success: "#16A34A",
+  danger:  "#DC2626",
+  amber:   "#D97706",
+};
+
+/* ─── Constants ──────────────────────────────────────────────────── */
+const BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET"];
 
 const CATEGORY_COLORS = {
   "ENGINE REPAIR":    "#2563EB",
   "GEAR BOX":         "#DC2626",
-  "ELECTRICAL":       "#F59E0B",
+  "ELECTRICAL":       "#D97706",
   "BODY WORK":        "#16A34A",
-  "DIFFERENTIATE":    "#DB2777",
+  "DIFFERENTIAL":     "#DB2777",
   "TRANSMISSION":     "#7C3AED",
   "AC & COOLING":     "#0891B2",
-  "EATS FLUSING":     "#92400E",
+  "EATS FLUSHING":    "#92400E",
   "GENERAL SERVICE":  "#EA580C",
   "SCHEDULE SERVICE": "#374151",
 };
 
 const BRANCH_COLORS = [
-  "#3B8FFF","#10B981","#F59E0B","#8B5CF6",
-  "#06B6D4","#F97316","#EC4899","#84CC16","#EF4444","#14B8A6",
+  "#2563EB","#16A34A","#D97706","#7C3AED",
+  "#0891B2","#EA580C","#DB2777","#15803D","#DC2626","#0E7490",
 ];
 
+const RANK_COLORS = ["#D97706", "#6B7A99", "#92400E"];
+
 const fmt     = (n) =>
-  n >= 1_00_000 ? `₹${(n / 1_00_000).toFixed(1)}L`
-  : n >= 1000   ? `₹${(n / 1000).toFixed(1)}K`
-  :               `₹${n}`;
+  n >= 100000 ? `₹${(n / 100000).toFixed(1)}L`
+  : n >= 1000 ? `₹${(n / 1000).toFixed(1)}K`
+  : `₹${n}`;
 const fmtFull = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
 
-// ─── custom tooltip ───────────────────────────────────────────────────────────
-const DarkTooltip = ({ active, payload, label }) => {
+/* ─── Injected styles ────────────────────────────────────────────── */
+const INJECTED = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+  @keyframes aaFadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .aa-a1 { animation: aaFadeUp 0.3s ease both 0.00s; }
+  .aa-a2 { animation: aaFadeUp 0.3s ease both 0.06s; }
+  .aa-a3 { animation: aaFadeUp 0.3s ease both 0.12s; }
+  .aa-a4 { animation: aaFadeUp 0.3s ease both 0.18s; }
+  .aa-a5 { animation: aaFadeUp 0.3s ease both 0.24s; }
+
+  /* ── Filter inputs ── */
+  .aa-filter-input {
+    height: 40px;
+    padding: 0 12px;
+    background: #F8FAFC;
+    border: 1px solid #DDE3EE;
+    border-radius: 0;
+    color: #0A1628;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.15s, background 0.15s;
+    box-sizing: border-box;
+  }
+  .aa-filter-input:focus { border-color: #1E3A8A; background: #FFFFFF; }
+
+  .aa-filter-select {
+    height: 40px;
+    padding: 0 36px 0 12px;
+    background: #F8FAFC;
+    border: 1px solid #DDE3EE;
+    border-radius: 0;
+    color: #0A1628;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231E3A8A' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-color: #F8FAFC;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+  }
+  .aa-filter-select:focus { border-color: #1E3A8A; background-color: #FFFFFF; }
+
+  /* ── Buttons ── */
+  .aa-export-btn {
+    padding: 11px 24px;
+    background: #1E3A8A;
+    border: none;
+    border-radius: 0;
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    transition: background 0.15s;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    flex-shrink: 0;
+  }
+  .aa-export-btn:hover:not(:disabled) { background: #1E40AF; }
+  .aa-export-btn:disabled { background: #93C5FD; cursor: not-allowed; }
+
+  .aa-clear-btn {
+    padding: 0 16px;
+    height: 40px;
+    background: transparent;
+    border: 1px solid #FECACA;
+    border-radius: 0;
+    color: #DC2626;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aa-clear-btn:hover { background: #FEF2F2; border-color: #DC2626; }
+
+  .aa-retry-btn {
+    padding: 10px 24px;
+    background: transparent;
+    border: 1px solid #FECACA;
+    border-radius: 0;
+    color: #DC2626;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    margin-top: 12px;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aa-retry-btn:hover { background: #FEF2F2; }
+
+  /* ── Metric toggle pills ── */
+  .aa-metric-pill {
+    padding: 5px 11px;
+    border: 1px solid #DDE3EE;
+    background: #FFFFFF;
+    color: #6B7A99;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0;
+    white-space: nowrap;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aa-metric-pill:hover { border-color: #1E3A8A; color: #1E3A8A; }
+  .aa-metric-pill.active { background: #1E3A8A; border-color: #1E3A8A; color: #FFFFFF; }
+
+  /* ── Grid layouts ── */
+  .aa-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: #DDE3EE;
+    border: 1px solid #DDE3EE;
+  }
+  .aa-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+  }
+  .aa-row-equal {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .aa-metric-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Table ── */
+  .aa-table { width: 100%; border-collapse: collapse; }
+  .aa-table th {
+    padding: 8px 10px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #94A3B8;
+    border-bottom: 1px solid #DDE3EE;
+    white-space: nowrap;
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: #F8FAFC;
+  }
+  .aa-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid #F1F5F9;
+    font-size: 12px;
+    color: #374151;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .aa-table tbody tr:last-child td { border-bottom: none; }
+  .aa-table tfoot td {
+    padding: 11px 10px;
+    border-top: 1px solid #DDE3EE;
+    border-bottom: none;
+    font-weight: 700;
+    color: #0A1628;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: #F8FAFC;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 960px) {
+    .aa-row-2col  { grid-template-columns: 1fr !important; }
+    .aa-row-equal { grid-template-columns: 1fr !important; }
+  }
+  @media (max-width: 640px) {
+    .aa-kpi-grid { grid-template-columns: 1fr 1fr !important; }
+  }
+  @media (max-width: 420px) {
+    .aa-kpi-grid { grid-template-columns: 1fr !important; }
+    .aa-metric-pill { font-size: 8px; padding: 4px 8px; }
+  }
+`;
+
+/* ─── Light chart tooltip ─────────────────────────────────────────── */
+const LightTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: "#0F2044", border: "1px solid rgba(30,111,217,0.35)",
-      borderRadius: 10, padding: "12px 16px", fontSize: 13,
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderLeft: `3px solid ${C.navy}`,
+      padding: "10px 14px",
+      fontFamily: "'IBM Plex Sans', sans-serif",
+      boxShadow: "0 4px 16px rgba(10,22,40,0.08)",
     }}>
-      <p style={{ color: "#8BA3C7", marginBottom: 8, fontWeight: 600 }}>{label}</p>
+      <p style={{
+        fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
+        textTransform: "uppercase", color: C.muted, marginBottom: "6px", margin: "0 0 6px",
+      }}>{label}</p>
       {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color, margin: "3px 0" }}>
+        <p key={i} style={{ fontSize: "12px", color: C.mid, margin: "3px 0", display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{
+            display: "inline-block", width: "8px", height: "8px",
+            background: p.color, flexShrink: 0,
+          }} />
           {p.name}:{" "}
-          <strong style={{ color: "#F0F4FF" }}>
-            {p.name?.toLowerCase().includes("labour") || p.name?.toLowerCase().includes("incentive")
+          <strong style={{
+            color: C.ink,
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: "12px",
+          }}>
+            {(p.name?.toLowerCase().includes("labour") || p.name?.toLowerCase().includes("incentive"))
               ? fmtFull(p.value)
               : p.value?.toLocaleString("en-IN")}
           </strong>
@@ -62,75 +300,114 @@ const DarkTooltip = ({ active, payload, label }) => {
   );
 };
 
-// ─── KPI card ─────────────────────────────────────────────────────────────────
-const KpiCard = ({ label, value, sub, accent = "#3B8FFF", icon }) => (
+/* ─── KPI Card ───────────────────────────────────────────────────── */
+const KpiCard = ({ label, value, sub, accent = C.navy }) => (
   <div style={{
-    background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-    borderRadius: 14, padding: "22px 24px",
-    display: "flex", flexDirection: "column", gap: 8,
-    position: "relative", overflow: "hidden",
+    background: C.card,
+    padding: "20px 18px 16px",
+    display: "flex",
+    flexDirection: "column",
+    borderLeft: `3px solid ${accent}`,
   }}>
     <div style={{
-      position: "absolute", top: 0, right: 0, width: 80, height: 80,
-      background: `radial-gradient(circle at top right, ${accent}22, transparent 70%)`,
-    }} />
-    <span style={{ fontSize: 22, lineHeight: 1 }}>{icon}</span>
-    <p style={{ color: "#8BA3C7", fontSize: 12, letterSpacing: "0.06em", fontWeight: 600, textTransform: "uppercase" }}>
-      {label}
-    </p>
-    <p style={{ fontSize: 26, fontWeight: 700, color: "#F0F4FF", lineHeight: 1 }}>{value}</p>
-    {sub && <p style={{ fontSize: 12, color: "#8BA3C7" }}>{sub}</p>}
+      fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+      textTransform: "uppercase", color: C.muted, marginBottom: "12px",
+      fontFamily: "'IBM Plex Sans', sans-serif",
+    }}>{label}</div>
+    <div style={{
+      fontFamily: "'Barlow Condensed', sans-serif",
+      fontSize: "32px", fontWeight: "700", color: C.ink,
+      lineHeight: 1, letterSpacing: "0.01em", marginBottom: "5px",
+    }}>{value}</div>
+    {sub && (
+      <div style={{
+        fontSize: "9px", fontWeight: "600", letterSpacing: "0.1em",
+        textTransform: "uppercase", color: C.dim,
+      }}>{sub}</div>
+    )}
   </div>
 );
 
-// ─── section header ───────────────────────────────────────────────────────────
-const SectionHeader = ({ title, action }) => (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-    <h2 style={{ fontSize: 15, fontWeight: 700, color: "#F0F4FF", letterSpacing: "0.02em" }}>{title}</h2>
-    {action}
+/* ─── Chart Card ─────────────────────────────────────────────────── */
+const ChartCard = ({ title, children, action, className = "", style = {} }) => (
+  <div className={className} style={{
+    background: C.card,
+    border: `1px solid ${C.border}`,
+    padding: "24px",
+    ...style,
+  }}>
+    <div style={{
+      display: "flex", alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: "20px", gap: "12px", flexWrap: "wrap",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ width: "3px", height: "14px", background: C.navy, flexShrink: 0 }} />
+        <span style={{
+          fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
+          textTransform: "uppercase", color: C.muted,
+          fontFamily: "'IBM Plex Sans', sans-serif",
+        }}>{title}</span>
+      </div>
+      {action}
+    </div>
+    {children}
   </div>
 );
 
-// ─── main component ───────────────────────────────────────────────────────────
+/* ─── Filter field label ─────────────────────────────────────────── */
+const FLabel = ({ text }) => (
+  <div style={{
+    fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
+    textTransform: "uppercase", color: C.mid, marginBottom: "6px",
+    fontFamily: "'IBM Plex Sans', sans-serif",
+  }}>{text}</div>
+);
+
+/* ─── Empty state ────────────────────────────────────────────────── */
+const NoData = () => (
+  <div style={{ textAlign: "center", padding: "40px 0", color: C.dim, fontSize: "13px", fontWeight: "500" }}>
+    No data available
+  </div>
+);
+
+/* ─── Shared chart props ─────────────────────────────────────────── */
+const AXIS_TICK  = { fill: C.muted, fontSize: 11, fontFamily: "'IBM Plex Sans', sans-serif" };
+const CHART_GRID = { strokeDasharray: "3 3", stroke: C.border };
+
+/* ─── Main component ─────────────────────────────────────────────── */
 export default function AdminAnalytics() {
-  const navigate      = useNavigate();
-  const { user }      = useAuthStore();
+  const { user } = useAuthStore();
 
-  /**
-   * Role flags — determines whether branch filter UI is visible.
-   *
-   * isSuperAdmin → sees branch dropdown, can filter by any branch or all branches
-   * isBranchAdmin → branch dropdown is HIDDEN; backend always forces their branch
-   *   regardless of what the client sends (so we don't even send a branch param)
-   */
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
-
-  // branch filter — only used/shown for superadmin
-  const [branch, setBranch] = useState("");
-  const [from,   setFrom]   = useState("");
-  const [to,     setTo]     = useState("");
-
+  const [data,         setData]         = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
+  const [branch,       setBranch]       = useState("");
+  const [from,         setFrom]         = useState("");
+  const [to,           setTo]           = useState("");
   const [branchMetric, setBranchMetric] = useState("totalLabour");
 
+  /* inject styles */
+  useEffect(() => {
+    const id = "aa-styles";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id; el.textContent = INJECTED;
+      document.head.appendChild(el);
+    }
+    return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
+  }, []);
+
   const fetchAnalytics = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const params = {};
-      /**
-       * Only include branch param for superadmin.
-       * For branch admin the backend ignores it and forces req.user.branch,
-       * but we don't send it at all to keep intent clear.
-       */
       if (isSuperAdmin && branch) params.branch = branch;
       if (from) params.from = from;
       if (to)   params.to   = to;
-
       const res = await api.get("/api/admin/analytics", { params });
       setData(res.data);
     } catch {
@@ -142,139 +419,115 @@ export default function AdminAnalytics() {
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  // ── CSV export ──────────────────────────────────────────────────────────────
+  /* ── CSV export ── (logic unchanged) */
   const exportCSV = () => {
     if (!data) return;
-
-    const rows = [
-      ["Section", "Dimension", "Labour (₹)", "Hours", "Entries", "Incentives (₹)", "Leave Days"],
-    ];
-    data.byBranch.forEach(b => rows.push([
-      "Branch", b._id, b.totalLabour, b.totalHours, b.totalEntries, b.totalIncentives, b.totalLeaveDays,
-    ]));
-    data.byCategory.forEach(c => rows.push([
-      "Category", c._id, c.totalLabour, c.totalHours, c.count, "", "",
-    ]));
-    data.byMonth.forEach(m => rows.push([
-      "Monthly Trend", m.label, m.totalLabour, m.totalHours, m.totalEntries, m.totalIncentives, "",
-    ]));
-    data.topTechs.forEach(t => rows.push([
-      "Top Technicians", `${t.name} (${t.technicianId})`, t.totalLabour, t.totalHours, t.totalEntries, "", "",
-    ]));
-
-    const csv    = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob   = new Blob([csv], { type: "text/csv" });
-    const url    = URL.createObjectURL(blob);
-    const a      = document.createElement("a");
-    // Use scopedBranch from response if branch admin, otherwise use branch filter
-    const scope  = data.scopedBranch || (isSuperAdmin && branch ? `_${branch}` : "_all_branches");
-    const suffix = typeof scope === "string" && scope.startsWith("_") ? scope : `_${scope}`;
-    a.href = url;
-    a.download = `AL_Analytics${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const rows = [["Section","Dimension","Labour (₹)","Hours","Entries","Incentives (₹)","Leave Days"]];
+    data.byBranch.forEach(b   => rows.push(["Branch",       b._id,                              b.totalLabour,  b.totalHours,  b.totalEntries, b.totalIncentives, b.totalLeaveDays]));
+    data.byCategory.forEach(c => rows.push(["Category",     c._id,                              c.totalLabour,  c.totalHours,  c.count,        "",                ""]));
+    data.byMonth.forEach(m    => rows.push(["Monthly Trend", m.label,                           m.totalLabour,  m.totalHours,  m.totalEntries, m.totalIncentives, ""]));
+    data.topTechs.forEach(t   => rows.push(["Top Technicians", `${t.name} (${t.technicianId})`, t.totalLabour,  t.totalHours,  t.totalEntries, "",                ""]));
+    const csv   = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob  = new Blob([csv], { type: "text/csv" });
+    const url   = URL.createObjectURL(blob);
+    const scope = data.scopedBranch || (isSuperAdmin && branch ? `_${branch}` : "_all_branches");
+    const sfx   = typeof scope === "string" && scope.startsWith("_") ? scope : `_${scope}`;
+    const a     = Object.assign(document.createElement("a"), {
+      href: url, download: `AL_Analytics${sfx}_${new Date().toISOString().slice(0, 10)}.csv`,
+    });
+    a.click(); URL.revokeObjectURL(url);
   };
 
-  // ── derived ─────────────────────────────────────────────────────────────────
-  const o = data?.overview;
-
-  const branchMetricLabel = {
-    totalLabour:     "Labour (₹)",
-    totalHours:      "Hours Worked",
-    totalEntries:    "Total Entries",
-    totalIncentives: "Incentives (₹)",
-  };
-
-  /**
-   * Whether any active filter can be cleared.
-   * For branch admin: only dates. For superadmin: branch + dates.
-   */
   const hasActiveFilter = (isSuperAdmin && !!branch) || !!from || !!to;
+  const clearFilters    = () => { if (isSuperAdmin) setBranch(""); setFrom(""); setTo(""); };
 
-  const clearFilters = () => {
-    if (isSuperAdmin) setBranch("");
-    setFrom("");
-    setTo("");
-  };
-
-  /**
-   * Status line shown in the filter bar.
-   * Branch admin: always shows their branch (from the API response's scopedBranch).
-   * Superadmin: shows filter state.
-   */
   const filterStatusText = () => {
     if (isBranchAdmin) {
       const b = data?.scopedBranch || user?.branch || "";
       return `Branch: ${b}${(from || to) ? ` · ${from || "start"} → ${to || "now"}` : ""}`;
     }
-    return `${branch ? `Filtered: ${branch}` : "Showing all branches"}${(from || to) ? ` · ${from || "start"} → ${to || "now"}` : ""}`;
+    return `${branch ? `Filtered: ${branch}` : "All branches"}${(from || to) ? ` · ${from || "start"} → ${to || "now"}` : ""}`;
   };
 
-  // ── render ──────────────────────────────────────────────────────────────────
+  const branchMetricLabel = {
+    totalLabour:     "Labour",
+    totalHours:      "Hours",
+    totalEntries:    "Entries",
+    totalIncentives: "Incentives",
+  };
+
+  const o = data?.overview;
+
+  /* ── Render ── */
   return (
-    <div style={{ minHeight: "100dvh", background: "#0A1628", color: "#F0F4FF" }}>
+    <div style={{
+      minHeight: "100dvh",
+      background: C.pageBg,
+      fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+      WebkitFontSmoothing: "antialiased",
+    }}>
       <Navbar />
 
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px 24px 64px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 16px 80px" }}>
 
-        {/* ── page header ── */}
-        <div style={{
-          display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-          flexWrap: "wrap", gap: 16, marginBottom: 32,
+        {/* ── Page header ── */}
+        <div className="aa-a1" style={{
+          display: "flex", alignItems: "flex-start",
+          justifyContent: "space-between", flexWrap: "wrap",
+          gap: "16px", marginBottom: "28px",
+          paddingBottom: "24px", borderBottom: `1px solid ${C.border}`,
         }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>
-              {isBranchAdmin
-                ? `${user?.branch || ""} Analytics`
-                : "Analytics"}
+            <div style={{
+              fontSize: "9px", fontWeight: "700", letterSpacing: "0.22em",
+              textTransform: "uppercase", color: C.navy, marginBottom: "6px",
+            }}>
+              {isSuperAdmin ? "Super Admin" : "Branch Admin"} · Analytics
+            </div>
+            <h1 style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "36px", fontWeight: "700", color: C.ink,
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              margin: "0 0 6px", lineHeight: 1,
+            }}>
+              {isBranchAdmin ? `${user?.branch || ""} Analytics` : "Performance Analytics"}
             </h1>
-            <p style={{ color: "#8BA3C7", fontSize: 14 }}>
+            <p style={{
+              fontSize: "13px", color: C.muted,
+              margin: 0, fontWeight: "300", fontStyle: "italic",
+            }}>
               {isBranchAdmin
-                ? `${user?.branch || ""} branch performance · AML MOTORS`
-                : "Cross-branch performance intelligence · AML MOTORS"}
+                ? `${user?.branch || ""} branch performance · AML Motors`
+                : "Cross-branch performance intelligence · AML Motors"}
             </p>
           </div>
-          <button
-            onClick={exportCSV}
-            disabled={!data}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              background: data ? "rgba(30,111,217,0.15)" : "rgba(30,111,217,0.05)",
-              border: "1px solid rgba(30,111,217,0.4)", borderRadius: 10,
-              padding: "10px 18px",
-              color: data ? "#3B8FFF" : "#8BA3C7",
-              fontSize: 13, fontWeight: 600, cursor: data ? "pointer" : "not-allowed",
-              transition: "all 0.2s",
-            }}
-          >
-            ⬇ Export CSV
+          <button className="aa-export-btn" onClick={exportCSV} disabled={!data}>
+            ↓ Export CSV
           </button>
         </div>
 
-        {/* ── filters ── */}
-        <div style={{
-          background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-          borderRadius: 14, padding: "16px 20px",
-          display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end",
-          marginBottom: 28,
+        {/* ── Filter bar ── */}
+        <div className="aa-a2" style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderLeft: `3px solid ${C.navy}`,
+          padding: "20px 24px",
+          marginBottom: "28px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "16px",
+          alignItems: "flex-end",
         }}>
 
-          {/* Branch selector — SUPERADMIN ONLY */}
+          {/* Branch selector — superadmin only */}
           {isSuperAdmin && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
-              <label style={{
-                fontSize: 11, fontWeight: 600, color: "#8BA3C7",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-              }}>
-                Branch
-              </label>
+            <div style={{ display: "flex", flexDirection: "column", minWidth: "160px" }}>
+              <FLabel text="Branch" />
               <select
+                className="aa-filter-select"
                 value={branch}
                 onChange={e => setBranch(e.target.value)}
-                style={{
-                  background: "#162d5a", border: "1px solid rgba(30,111,217,0.3)",
-                  borderRadius: 8, color: "#F0F4FF", padding: "8px 12px", fontSize: 13,
-                }}
+                style={{ width: "100%" }}
               >
                 <option value="">All Branches</option>
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
@@ -282,169 +535,184 @@ export default function AdminAnalytics() {
             </div>
           )}
 
-          {/* Branch admin: locked branch badge instead of selector */}
+          {/* Locked branch badge — branch admin */}
           {isBranchAdmin && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{
-                fontSize: 11, fontWeight: 600, color: "#8BA3C7",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-              }}>
-                Branch
-              </label>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <FLabel text="Branch" />
               <div style={{
-                background: "rgba(30,111,217,0.12)",
-                border: "1px solid rgba(30,111,217,0.3)",
-                borderRadius: 8, padding: "8px 14px",
-                display: "flex", alignItems: "center", gap: 8,
+                height: "40px",
+                display: "inline-flex", alignItems: "center", gap: "8px",
+                background: C.cardAlt, border: `1px solid ${C.border}`,
+                borderLeft: `3px solid ${C.navy}`,
+                padding: "0 16px",
               }}>
                 <div style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: "#3B8FFF", flexShrink: 0,
+                  width: "6px", height: "6px", borderRadius: "50%",
+                  background: C.navy, flexShrink: 0,
                 }} />
                 <span style={{
-                  fontSize: 13, fontWeight: 700, color: "#7A98F8",
-                  letterSpacing: "0.06em",
-                }}>
-                  {user?.branch || "—"}
-                </span>
+                  fontSize: "11px", fontWeight: "700", letterSpacing: "0.12em",
+                  textTransform: "uppercase", color: C.navy,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}>{user?.branch || "—"}</span>
               </div>
             </div>
           )}
 
-          {/* Date filters — always visible for both roles */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{
-              fontSize: 11, fontWeight: 600, color: "#8BA3C7",
-              letterSpacing: "0.06em", textTransform: "uppercase",
-            }}>From</label>
+          {/* Date — From */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FLabel text="From" />
             <input
-              type="date" value={from} onChange={e => setFrom(e.target.value)}
-              style={{
-                background: "#162d5a", border: "1px solid rgba(30,111,217,0.3)",
-                borderRadius: 8, color: "#F0F4FF", padding: "8px 12px", fontSize: 13,
-              }}
+              type="date"
+              className="aa-filter-input"
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+              style={{ colorScheme: "light", width: "150px" }}
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{
-              fontSize: 11, fontWeight: 600, color: "#8BA3C7",
-              letterSpacing: "0.06em", textTransform: "uppercase",
-            }}>To</label>
+          {/* Date — To */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FLabel text="To" />
             <input
-              type="date" value={to} onChange={e => setTo(e.target.value)}
-              style={{
-                background: "#162d5a", border: "1px solid rgba(30,111,217,0.3)",
-                borderRadius: 8, color: "#F0F4FF", padding: "8px 12px", fontSize: 13,
-              }}
+              type="date"
+              className="aa-filter-input"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              style={{ colorScheme: "light", width: "150px" }}
             />
           </div>
 
+          {/* Clear */}
           {hasActiveFilter && (
-            <button
-              onClick={clearFilters}
-              style={{
-                background: "rgba(224,59,59,0.1)", border: "1px solid rgba(224,59,59,0.3)",
-                borderRadius: 8, color: "#E03B3B", padding: "8px 14px",
-                fontSize: 13, fontWeight: 600, cursor: "pointer",
-              }}
-            >
+            <button className="aa-clear-btn" onClick={clearFilters}>
               Clear
             </button>
           )}
 
-          <p style={{ marginLeft: "auto", fontSize: 12, color: "#8BA3C7", alignSelf: "center" }}>
-            {!loading && filterStatusText()}
-          </p>
+          {/* Filter status — right-aligned */}
+          {!loading && (
+            <div style={{
+              marginLeft: "auto", alignSelf: "flex-end",
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "11px", color: C.dim, letterSpacing: "0.04em",
+              paddingBottom: "2px",
+            }}>
+              {filterStatusText()}
+            </div>
+          )}
         </div>
 
-        {/* ── loading / error ── */}
+        {/* ── Loading ── */}
         {loading && (
-          <div style={{ textAlign: "center", padding: "80px 0", color: "#8BA3C7" }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <p>Loading analytics…</p>
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{
+              width: "24px", height: "24px",
+              border: `2px solid ${C.border}`, borderTop: `2px solid ${C.navy}`,
+              borderRadius: "50%", margin: "0 auto 16px",
+              animation: "spin 0.8s linear infinite",
+            }} />
+            <p style={{
+              fontSize: "10px", letterSpacing: "0.18em",
+              textTransform: "uppercase", fontWeight: "700", color: C.dim, margin: 0,
+            }}>Loading analytics…</p>
           </div>
         )}
 
+        {/* ── Error ── */}
         {error && (
           <div style={{
-            background: "rgba(224,59,59,0.1)", border: "1px solid rgba(224,59,59,0.3)",
-            borderRadius: 12, padding: "20px 24px", color: "#E03B3B", textAlign: "center",
+            background: "#FEF2F2", border: "1px solid #FECACA",
+            borderLeft: "3px solid #DC2626",
+            padding: "24px", textAlign: "center",
           }}>
-            {error}
-            <button onClick={fetchAnalytics} style={{
-              marginLeft: 16, background: "none", border: "1px solid #E03B3B",
-              borderRadius: 6, color: "#E03B3B", padding: "4px 12px", cursor: "pointer", fontSize: 13,
-            }}>Retry</button>
+            <p style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "20px", fontWeight: "700", color: C.danger,
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              margin: "0 0 6px",
+            }}>Failed to Load</p>
+            <p style={{ fontSize: "13px", color: "#991B1B", margin: "0" }}>{error}</p>
+            <button className="aa-retry-btn" onClick={fetchAnalytics}>Retry</button>
           </div>
         )}
 
+        {/* ── Main content ── */}
         {!loading && !error && data && (
           <>
-            {/* ── KPI row ── */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 16, marginBottom: 32,
-            }}>
-              <KpiCard icon="💰" label="Total Labour"    value={fmt(o.totalLabour)}
-                sub={fmtFull(o.totalLabour)} accent="#3B8FFF" />
-              <KpiCard icon="⏱"  label="Total Hours"     value={o.totalHours.toLocaleString("en-IN")}
-                sub="hours worked" accent="#10B981" />
-              <KpiCard icon="🎯" label="Incentives Paid" value={fmt(o.totalIncentives)}
-                sub={fmtFull(o.totalIncentives)} accent="#F59E0B" />
-              <KpiCard icon="📋" label="Total Entries"   value={o.totalEntries.toLocaleString("en-IN")}
-                sub="job cards logged" accent="#8B5CF6" />
-              <KpiCard icon="🏖" label="Leave Days"      value={o.totalLeaveDays.toLocaleString("en-IN")}
-                sub="across all technicians" accent="#F97316" />
+            {/* KPI grid */}
+            <div className="aa-a3 aa-kpi-grid" style={{ marginBottom: "24px" }}>
+              <KpiCard
+                label="Total Labour"
+                value={fmt(o.totalLabour)}
+                sub={fmtFull(o.totalLabour)}
+                accent={C.amber}
+              />
+              <KpiCard
+                label="Total Hours"
+                value={o.totalHours.toLocaleString("en-IN")}
+                sub="hrs worked"
+                accent={C.success}
+              />
+              <KpiCard
+                label="Incentives Paid"
+                value={fmt(o.totalIncentives)}
+                sub={fmtFull(o.totalIncentives)}
+                accent={C.navy}
+              />
+              <KpiCard
+                label="Total Entries"
+                value={o.totalEntries.toLocaleString("en-IN")}
+                sub="job cards logged"
+                accent="#7C3AED"
+              />
+              <KpiCard
+                label="Leave Days"
+                value={o.totalLeaveDays.toLocaleString("en-IN")}
+                sub="across technicians"
+                accent={C.muted}
+              />
               {o.totalEntries > 0 && (
-                <KpiCard icon="📊" label="Avg Labour / Entry"
+                <KpiCard
+                  label="Avg Labour / Entry"
                   value={fmt(Math.round(o.totalLabour / o.totalEntries))}
-                  sub="per job card" accent="#06B6D4" />
+                  sub="per job card"
+                  accent="#0891B2"
+                />
               )}
             </div>
 
-            {/* ── row 1: branch bar + category pie ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, marginBottom: 20 }}>
+            {/* ── Row 1: Branch bar + Category donut ── */}
+            <div className="aa-a4 aa-row-2col" style={{ marginBottom: "20px" }}>
 
-              {/* branch comparison bar */}
-              <div style={{
-                background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-                borderRadius: 14, padding: "24px",
-              }}>
-                <SectionHeader
-                  title={isBranchAdmin ? "Branch Performance" : "Branch Comparison"}
-                  action={
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {Object.entries(branchMetricLabel).map(([k, v]) => (
-                        <button key={k} onClick={() => setBranchMetric(k)} style={{
-                          background: branchMetric === k ? "rgba(30,111,217,0.3)" : "transparent",
-                          border: `1px solid ${branchMetric === k ? "#3B8FFF" : "rgba(30,111,217,0.2)"}`,
-                          borderRadius: 6,
-                          color: branchMetric === k ? "#3B8FFF" : "#8BA3C7",
-                          padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer",
-                          letterSpacing: "0.03em",
-                        }}>
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  }
-                />
-                {data.byBranch.length === 0 ? (
-                  <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={280}>
+              {/* Branch bar chart */}
+              <ChartCard
+                title={isBranchAdmin ? "Branch Performance" : "Branch Comparison"}
+                action={
+                  <div className="aa-metric-pills">
+                    {Object.entries(branchMetricLabel).map(([k, v]) => (
+                      <button
+                        key={k}
+                        onClick={() => setBranchMetric(k)}
+                        className={`aa-metric-pill${branchMetric === k ? " active" : ""}`}
+                      >{v}</button>
+                    ))}
+                  </div>
+                }
+              >
+                {data.byBranch.length === 0 ? <NoData /> : (
+                  <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,111,217,0.1)" />
-                      <XAxis dataKey="_id" tick={{ fill: "#8BA3C7", fontSize: 11 }} />
+                      <CartesianGrid {...CHART_GRID} />
+                      <XAxis dataKey="_id" tick={AXIS_TICK} />
                       <YAxis
-                        tick={{ fill: "#8BA3C7", fontSize: 11 }}
+                        tick={AXIS_TICK}
                         tickFormatter={v =>
                           branchMetric.includes("Labour") || branchMetric.includes("Incentive")
-                            ? fmt(v) : v}
+                            ? fmt(v) : v.toLocaleString("en-IN")}
                       />
-                      <Tooltip content={<DarkTooltip />} />
-                      <Bar dataKey={branchMetric} name={branchMetricLabel[branchMetric]} radius={[6,6,0,0]}>
+                      <Tooltip content={<LightTooltip />} />
+                      <Bar dataKey={branchMetric} name={branchMetricLabel[branchMetric]} radius={[0, 0, 0, 0]}>
                         {data.byBranch.map((_, i) => (
                           <Cell key={i} fill={BRANCH_COLORS[i % BRANCH_COLORS.length]} />
                         ))}
@@ -452,140 +720,170 @@ export default function AdminAnalytics() {
                     </BarChart>
                   </ResponsiveContainer>
                 )}
-              </div>
+              </ChartCard>
 
-              {/* category donut */}
-              <div style={{
-                background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-                borderRadius: 14, padding: "24px",
-              }}>
-                <SectionHeader title="Labour by Category" />
-                {data.byCategory.length === 0 ? (
-                  <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-                ) : (
+              {/* Category donut */}
+              <ChartCard title="Labour by Category">
+                {data.byCategory.length === 0 ? <NoData /> : (
                   <>
-                    <ResponsiveContainer width="100%" height={200}>
+                    <ResponsiveContainer width="100%" height={170}>
                       <PieChart>
-                        <Pie data={data.byCategory} dataKey="totalLabour" nameKey="_id"
-                          cx="50%" cy="50%" innerRadius={55} outerRadius={90}
-                          paddingAngle={3} stroke="none">
+                        <Pie
+                          data={data.byCategory}
+                          dataKey="totalLabour"
+                          nameKey="_id"
+                          cx="50%" cy="50%"
+                          innerRadius={48} outerRadius={78}
+                          paddingAngle={2} stroke="none"
+                        >
                           {data.byCategory.map((c, i) => (
                             <Cell key={i} fill={CATEGORY_COLORS[c._id] || BRANCH_COLORS[i]} />
                           ))}
                         </Pie>
-                        <Tooltip content={<DarkTooltip />} />
+                        <Tooltip content={<LightTooltip />} />
                       </PieChart>
                     </ResponsiveContainer>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+
+                    {/* Legend with progress bars */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
                       {data.byCategory.map((c, i) => {
-                        const pct   = o.totalLabour > 0
-                          ? ((c.totalLabour / o.totalLabour) * 100).toFixed(1) : 0;
+                        const pct   = o.totalLabour > 0 ? ((c.totalLabour / o.totalLabour) * 100).toFixed(1) : 0;
                         const color = CATEGORY_COLORS[c._id] || BRANCH_COLORS[i];
                         return (
-                          <div key={c._id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
-                            <span style={{ fontSize: 12, color: "#8BA3C7", flex: 1 }}>{c._id}</span>
-                            <span style={{ fontSize: 12, color: "#F0F4FF", fontWeight: 600 }}>{pct}%</span>
-                            <span style={{ fontSize: 11, color: "#8BA3C7", minWidth: 50, textAlign: "right" }}>
-                              {fmt(c.totalLabour)}
-                            </span>
+                          <div key={c._id}>
+                            <div style={{
+                              display: "flex", alignItems: "center",
+                              gap: "8px", marginBottom: "5px",
+                            }}>
+                              <div style={{ width: "8px", height: "8px", flexShrink: 0, background: color }} />
+                              <span style={{ fontSize: "11px", color: C.mid, flex: 1, fontWeight: "500" }}>{c._id}</span>
+                              <span style={{ fontSize: "10px", color: C.muted }}>{pct}%</span>
+                              <span style={{
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                fontSize: "11px", color: C.ink, fontWeight: "600",
+                                minWidth: "44px", textAlign: "right",
+                              }}>{fmt(c.totalLabour)}</span>
+                            </div>
+                            <div style={{ height: "3px", background: C.border, overflow: "hidden" }}>
+                              <div style={{
+                                width: `${pct}%`, height: "100%", background: color,
+                                transition: "width 0.7s cubic-bezier(0.4,0,0.2,1)",
+                              }} />
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   </>
                 )}
-              </div>
+              </ChartCard>
             </div>
 
-            {/* ── row 2: monthly trend ── */}
-            <div style={{
-              background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-              borderRadius: 14, padding: "24px", marginBottom: 20,
-            }}>
-              <SectionHeader title="Monthly Trend — Labour & Hours" />
-              {data.byMonth.length === 0 ? (
-                <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
+            {/* ── Monthly trend ── */}
+            <ChartCard
+              className="aa-a4"
+              title="Monthly Trend — Labour & Hours"
+              style={{ marginBottom: "20px" }}
+            >
+              {data.byMonth.length === 0 ? <NoData /> : (
+                <ResponsiveContainer width="100%" height={240}>
                   <LineChart data={data.byMonth} margin={{ top: 4, right: 24, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,111,217,0.1)" />
-                    <XAxis dataKey="label" tick={{ fill: "#8BA3C7", fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fill: "#8BA3C7", fontSize: 11 }} tickFormatter={v => fmt(v)} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fill: "#8BA3C7", fontSize: 11 }} />
-                    <Tooltip content={<DarkTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 12, color: "#8BA3C7" }} />
-                    <Line yAxisId="left"  type="monotone" dataKey="totalLabour"     name="Labour (₹)"
-                      stroke="#3B8FFF" strokeWidth={2.5} dot={{ r: 4, fill: "#3B8FFF" }} activeDot={{ r: 6 }} />
-                    <Line yAxisId="right" type="monotone" dataKey="totalHours"      name="Hours Worked"
-                      stroke="#10B981" strokeWidth={2.5} dot={{ r: 4, fill: "#10B981" }} activeDot={{ r: 6 }} />
-                    <Line yAxisId="left"  type="monotone" dataKey="totalIncentives" name="Incentives (₹)"
-                      stroke="#F59E0B" strokeWidth={2} strokeDasharray="5 4"
-                      dot={{ r: 3, fill: "#F59E0B" }} activeDot={{ r: 5 }} />
+                    <CartesianGrid {...CHART_GRID} />
+                    <XAxis dataKey="label" tick={AXIS_TICK} />
+                    <YAxis yAxisId="left"  tick={AXIS_TICK} tickFormatter={v => fmt(v)} />
+                    <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} />
+                    <Tooltip content={<LightTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                    <Line
+                      yAxisId="left" type="monotone" dataKey="totalLabour" name="Labour (₹)"
+                      stroke={C.navy} strokeWidth={2.5}
+                      dot={{ r: 4, fill: C.navy, strokeWidth: 0 }} activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      yAxisId="right" type="monotone" dataKey="totalHours" name="Hours Worked"
+                      stroke={C.success} strokeWidth={2.5}
+                      dot={{ r: 4, fill: C.success, strokeWidth: 0 }} activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      yAxisId="left" type="monotone" dataKey="totalIncentives" name="Incentives (₹)"
+                      stroke={C.amber} strokeWidth={2} strokeDasharray="5 4"
+                      dot={{ r: 3, fill: C.amber, strokeWidth: 0 }} activeDot={{ r: 5 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               )}
-            </div>
+            </ChartCard>
 
-            {/* ── row 3: top technicians + category table ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+            {/* ── Row 3: Top technicians + Category table ── */}
+            <div className="aa-a5 aa-row-equal" style={{ marginBottom: "20px" }}>
 
-              {/* top technicians */}
-              <div style={{
-                background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-                borderRadius: 14, padding: "24px",
-              }}>
-                <SectionHeader
-                  title="Top Technicians by Labour"
-                  action={<span style={{ fontSize: 11, color: "#8BA3C7" }}>Top 10</span>}
-                />
-                {data.topTechs.length === 0 ? (
-                  <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Top technicians */}
+              <ChartCard
+                title="Top Technicians — Labour"
+                action={
+                  <span style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "11px", color: C.dim, letterSpacing: "0.04em",
+                  }}>Top 10</span>
+                }
+              >
+                {data.topTechs.length === 0 ? <NoData /> : (
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {data.topTechs.map((t, i) => {
                       const maxLabour = data.topTechs[0]?.totalLabour || 1;
                       const pct       = (t.totalLabour / maxLabour) * 100;
+                      const rankColor = i < 3 ? RANK_COLORS[i] : null;
                       return (
                         <div key={String(t._id)} style={{
                           padding: "10px 0",
                           borderBottom: i < data.topTechs.length - 1
-                            ? "1px solid rgba(30,111,217,0.1)" : "none",
+                            ? `1px solid ${C.borderL}` : "none",
                         }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                            <span style={{
-                              width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                              background: i < 3 ? ["#F59E0B","#8BA3C7","#CD7F32"][i] : "#162d5a",
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                            {/* Rank badge */}
+                            <div style={{
+                              width: "22px", height: "22px", flexShrink: 0,
+                              background: rankColor ? `${rankColor}18` : C.cardAlt,
+                              border: `1px solid ${rankColor || C.border}`,
                               display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 10, fontWeight: 700,
-                              color: i < 3 ? "#0A1628" : "#8BA3C7",
-                            }}>
-                              {i + 1}
-                            </span>
+                              fontSize: "9px", fontWeight: "700",
+                              color: rankColor || C.dim,
+                              fontFamily: "'IBM Plex Mono', monospace",
+                            }}>{i + 1}</div>
+
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{
-                                fontSize: 13, fontWeight: 600, color: "#F0F4FF",
+                                fontSize: "13px", fontWeight: "600", color: C.ink,
                                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                margin: 0, lineHeight: 1.3,
+                              }}>{t.name}</p>
+                              <p style={{
+                                fontSize: "10px", color: C.dim, margin: 0,
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                letterSpacing: "0.04em",
                               }}>
-                                {t.name}
-                              </p>
-                              <p style={{ fontSize: 11, color: "#8BA3C7" }}>
                                 {t.technicianId} · {t.branch}
                               </p>
                             </div>
+
                             <div style={{ textAlign: "right", flexShrink: 0 }}>
-                              <p style={{ fontSize: 14, fontWeight: 700, color: "#3B8FFF" }}>
-                                {fmt(t.totalLabour)}
-                              </p>
-                              <p style={{ fontSize: 11, color: "#8BA3C7" }}>
+                              <p style={{
+                                fontFamily: "'Barlow Condensed', sans-serif",
+                                fontSize: "20px", fontWeight: "700",
+                                color: rankColor || C.navy,
+                                margin: 0, lineHeight: 1,
+                              }}>{fmt(t.totalLabour)}</p>
+                              <p style={{ fontSize: "10px", color: C.dim, margin: 0 }}>
                                 {t.totalHours}h · {t.totalEntries} entries
                               </p>
                             </div>
                           </div>
-                          <div style={{ height: 4, background: "rgba(30,111,217,0.15)", borderRadius: 4 }}>
+
+                          {/* Progress bar */}
+                          <div style={{ height: "3px", background: C.border, overflow: "hidden" }}>
                             <div style={{
-                              height: "100%", borderRadius: 4, width: `${pct}%`,
-                              background: i < 3 ? ["#F59E0B","#8BA3C7","#CD7F32"][i] : "#3B8FFF",
+                              height: "100%", width: `${pct}%`,
+                              background: rankColor || C.navy,
                               transition: "width 0.6s ease",
                             }} />
                           </div>
@@ -594,103 +892,84 @@ export default function AdminAnalytics() {
                     })}
                   </div>
                 )}
-              </div>
+              </ChartCard>
 
-              {/* category detail table */}
-              <div style={{
-                background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-                borderRadius: 14, padding: "24px",
-              }}>
-                <SectionHeader title="Category Breakdown" />
-                {data.byCategory.length === 0 ? (
-                  <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-                ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(30,111,217,0.2)" }}>
-                        {["Category","Entries","Hours","Labour","Avg/Entry"].map(h => (
-                          <th key={h} style={{
-                            padding: "8px 6px", color: "#8BA3C7", fontWeight: 600,
-                            fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase",
-                            textAlign: h === "Category" ? "left" : "right",
-                          }}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.byCategory.map((c, i) => {
-                        const color = CATEGORY_COLORS[c._id] || BRANCH_COLORS[i];
-                        const avg   = c.count > 0 ? Math.round(c.totalLabour / c.count) : 0;
-                        return (
-                          <tr key={c._id} style={{ borderBottom: "1px solid rgba(30,111,217,0.08)" }}>
-                            <td style={{ padding: "10px 6px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                                <span style={{ color: "#F0F4FF", fontWeight: 500 }}>{c._id}</span>
-                              </div>
-                            </td>
-                            <td style={{ padding: "10px 6px", textAlign: "right", color: "#8BA3C7" }}>
-                              {c.count.toLocaleString("en-IN")}
-                            </td>
-                            <td style={{ padding: "10px 6px", textAlign: "right", color: "#8BA3C7" }}>
-                              {c.totalHours.toLocaleString("en-IN")}
-                            </td>
-                            <td style={{ padding: "10px 6px", textAlign: "right", color: "#3B8FFF", fontWeight: 600 }}>
-                              {fmt(c.totalLabour)}
-                            </td>
-                            <td style={{ padding: "10px 6px", textAlign: "right", color: "#10B981", fontWeight: 600 }}>
-                              {fmt(avg)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop: "1px solid rgba(30,111,217,0.2)" }}>
-                        <td style={{ padding: "10px 6px", color: "#F0F4FF", fontWeight: 700 }}>Total</td>
-                        <td style={{ padding: "10px 6px", textAlign: "right", color: "#F0F4FF", fontWeight: 700 }}>
-                          {o.totalEntries.toLocaleString("en-IN")}
-                        </td>
-                        <td style={{ padding: "10px 6px", textAlign: "right", color: "#F0F4FF", fontWeight: 700 }}>
-                          {o.totalHours.toLocaleString("en-IN")}
-                        </td>
-                        <td style={{ padding: "10px 6px", textAlign: "right", color: "#3B8FFF", fontWeight: 700 }}>
-                          {fmt(o.totalLabour)}
-                        </td>
-                        <td style={{ padding: "10px 6px", textAlign: "right", color: "#10B981", fontWeight: 700 }}>
-                          {fmt(o.totalEntries > 0 ? Math.round(o.totalLabour / o.totalEntries) : 0)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+              {/* Category breakdown table */}
+              <ChartCard title="Category Breakdown">
+                {data.byCategory.length === 0 ? <NoData /> : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="aa-table">
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: "left" }}>Category</th>
+                          <th style={{ textAlign: "right" }}>Entries</th>
+                          <th style={{ textAlign: "right" }}>Hours</th>
+                          <th style={{ textAlign: "right" }}>Labour</th>
+                          <th style={{ textAlign: "right" }}>Avg</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.byCategory.map((c, i) => {
+                          const color = CATEGORY_COLORS[c._id] || BRANCH_COLORS[i];
+                          const avg   = c.count > 0 ? Math.round(c.totalLabour / c.count) : 0;
+                          return (
+                            <tr key={c._id}>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <div style={{ width: "8px", height: "8px", flexShrink: 0, background: color }} />
+                                  <span style={{ color: C.ink, fontWeight: "500" }}>{c._id}</span>
+                                </div>
+                              </td>
+                              <td style={{ textAlign: "right", color: C.muted }}>{c.count.toLocaleString("en-IN")}</td>
+                              <td style={{ textAlign: "right", color: C.muted }}>{c.totalHours.toLocaleString("en-IN")}</td>
+                              <td style={{
+                                textAlign: "right", color: C.navy, fontWeight: "700",
+                                fontFamily: "'IBM Plex Mono', monospace",
+                              }}>{fmt(c.totalLabour)}</td>
+                              <td style={{
+                                textAlign: "right", color: C.success, fontWeight: "700",
+                                fontFamily: "'IBM Plex Mono', monospace",
+                              }}>{fmt(avg)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: "700", color: C.ink }}>Total</td>
+                          <td style={{ textAlign: "right" }}>{o.totalEntries.toLocaleString("en-IN")}</td>
+                          <td style={{ textAlign: "right" }}>{o.totalHours.toLocaleString("en-IN")}</td>
+                          <td style={{ textAlign: "right", color: C.navy }}>{fmt(o.totalLabour)}</td>
+                          <td style={{ textAlign: "right", color: C.success }}>
+                            {fmt(o.totalEntries > 0 ? Math.round(o.totalLabour / o.totalEntries) : 0)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 )}
-              </div>
+              </ChartCard>
             </div>
 
-            {/* ── row 4: incentives vs labour by branch ── */}
-            <div style={{
-              background: "#0F2044", border: "1px solid rgba(30,111,217,0.25)",
-              borderRadius: 14, padding: "24px",
-            }}>
-              <SectionHeader title={isBranchAdmin ? "Incentives vs Labour" : "Incentives vs Labour by Branch"} />
-              {data.byBranch.length === 0 ? (
-                <p style={{ color: "#8BA3C7", textAlign: "center", padding: "40px 0" }}>No data</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
+            {/* ── Incentives vs Labour by branch ── */}
+            <ChartCard
+              className="aa-a5"
+              title={isBranchAdmin ? "Incentives vs Labour" : "Incentives vs Labour by Branch"}
+            >
+              {data.byBranch.length === 0 ? <NoData /> : (
+                <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,111,217,0.1)" />
-                    <XAxis dataKey="_id" tick={{ fill: "#8BA3C7", fontSize: 11 }} />
-                    <YAxis tick={{ fill: "#8BA3C7", fontSize: 11 }} tickFormatter={v => fmt(v)} />
-                    <Tooltip content={<DarkTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 12, color: "#8BA3C7" }} />
-                    <Bar dataKey="totalLabour"     name="Labour (₹)"     fill="#3B8FFF" radius={[4,4,0,0]} />
-                    <Bar dataKey="totalIncentives" name="Incentives (₹)" fill="#F59E0B" radius={[4,4,0,0]} />
+                    <CartesianGrid {...CHART_GRID} />
+                    <XAxis dataKey="_id" tick={AXIS_TICK} />
+                    <YAxis tick={AXIS_TICK} tickFormatter={v => fmt(v)} />
+                    <Tooltip content={<LightTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                    <Bar dataKey="totalLabour"     name="Labour (₹)"     fill={C.navy}  radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="totalIncentives" name="Incentives (₹)" fill={C.amber} radius={[0, 0, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </div>
+            </ChartCard>
           </>
         )}
       </div>
