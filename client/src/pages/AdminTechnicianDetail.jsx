@@ -5,97 +5,251 @@ import Navbar from "../components/Navbar";
 import api from "../api/axios";
 import { CATEGORIES } from "../utils/constants";
 
-/* ─── Design tokens ─────────────────────────────────────────────────── */
+/* ─── Corporate light tokens ──────────────────────────────────────── */
 const C = {
-  bg:     "#09090E", surface: "#111119", card: "#16161F",
-  elev:   "#1E1E2C", border: "#23232F", border2: "#1A1A25",
-  text:   "#E2E2EE", muted:  "#60607A", dim:    "#30304A",
-  blue:   "#4C70F5", blueL: "#7A98F8",
-  green:  "#10C090", greenL:"#4DD8B6",
-  amber:  "#E8A000", amberL:"#FFC033",
-  red:    "#E04848",
+  pageBg:  "#EEF2F7",
+  card:    "#FFFFFF",
+  cardAlt: "#F8FAFC",
+  border:  "#DDE3EE",
+  borderL: "#F1F5F9",
+  navy:    "#1E3A8A",
+  navyHov: "#1E40AF",
+  ink:     "#0A1628",
+  mid:     "#374151",
+  muted:   "#6B7A99",
+  dim:     "#94A3B8",
+  success: "#16A34A",
+  danger:  "#DC2626",
+  amber:   "#D97706",
 };
 
-const CAT_STYLES = {
-  "ENGINE REPAIR":    { bg: "rgba(37,99,235,0.18)",   color: "#2563EB" },
-  "GEAR BOX":         { bg: "rgba(220,38,38,0.18)",   color: "#DC2626" },
-  "ELECTRICAL":       { bg: "rgba(245,158,11,0.18)",  color: "#F59E0B" },
-  "BODY WORK":        { bg: "rgba(22,163,74,0.18)",   color: "#16A34A" },
-  "DIFFERENTIAL":     { bg: "rgba(219,39,119,0.18)",  color: "#DB2777" },
-  "TRANSMISSION":     { bg: "rgba(124,58,237,0.18)",  color: "#7C3AED" },
-  "AC & COOLING":     { bg: "rgba(8,145,178,0.18)",   color: "#0891B2" },
-  "EATS FLUSHING":    { bg: "rgba(146,64,14,0.18)",   color: "#92400E" },
-  "GENERAL SERVICE":  { bg: "rgba(234,88,12,0.18)",   color: "#EA580C" },
-  "SCHEDULE SERVICE": { bg: "rgba(79,70,229,0.18)",   color: "#4F46E5" },
+const CAT_COLORS = {
+  "ENGINE REPAIR":    "#2563EB",
+  "GEAR BOX":         "#DC2626",
+  "ELECTRICAL":       "#D97706",
+  "BODY WORK":        "#16A34A",
+  "DIFFERENTIAL":     "#DB2777",
+  "TRANSMISSION":     "#7C3AED",
+  "AC & COOLING":     "#0891B2",
+  "EATS FLUSHING":    "#92400E",
+  "GENERAL SERVICE":  "#EA580C",
+  "SCHEDULE SERVICE": "#374151",
 };
 
-/* ─── Shared style helpers ───────────────────────────────────────────── */
-const LABEL = {
-  fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
-  textTransform: "uppercase", color: C.muted, display: "block",
-  marginBottom: "7px", fontFamily: "'IBM Plex Sans', sans-serif",
-};
-const INPUT = {
-  width: "100%", boxSizing: "border-box",
-  background: C.surface, border: `1px solid ${C.border}`,
-  borderRadius: "3px", color: C.text, fontSize: "13px",
-  padding: "11px 12px", fontFamily: "'IBM Plex Sans', sans-serif",
-  outline: "none", height: "42px",
-};
-const ERR = { fontSize: "10px", color: C.red, marginTop: "5px", letterSpacing: "0.04em" };
+const INJECTED = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-/* ─── Compact Stepper ────────────────────────────────────────────────── */
+  @keyframes adFadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes slideUpSheet { from { transform:translateY(100%); } to { transform:translateY(0); } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .ad-a1 { animation: adFadeUp 0.3s ease both 0.00s; }
+  .ad-a2 { animation: adFadeUp 0.3s ease both 0.06s; }
+  .ad-a3 { animation: adFadeUp 0.3s ease both 0.12s; }
+  .ad-a4 { animation: adFadeUp 0.3s ease both 0.18s; }
+
+  .ad-back-btn {
+    background: transparent; border: none; color: #94A3B8;
+    font-size: 10px; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 6px;
+    transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .ad-back-btn:hover { color: #1E3A8A; }
+
+  .ad-export-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid #DDE3EE;
+    border-radius: 0;
+    color: #6B7A99;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+    transition: all 0.15s; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ad-export-btn:hover:not(:disabled) { border-color: #1E3A8A; color: #1E3A8A; }
+  .ad-export-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .ad-entry-card {
+    background: #FFFFFF;
+    border: 1px solid #DDE3EE;
+    transition: border-left-color 0.15s;
+  }
+
+  .ad-edit-btn {
+    background: transparent; border: none;
+    color: #1E3A8A; font-size: 10px; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.12em;
+    font-family: 'IBM Plex Sans', sans-serif;
+    padding: 4px 0; text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .ad-edit-btn:hover { color: #1E40AF; }
+
+  .ad-delete-btn {
+    background: transparent; border: none;
+    color: #CBD5E1; font-size: 10px; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.12em;
+    font-family: 'IBM Plex Sans', sans-serif;
+    padding: 4px 0; text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .ad-delete-btn:hover { color: #DC2626; }
+
+  .ad-page-btn {
+    padding: 9px 20px;
+    background: #FFFFFF; border: 1px solid #DDE3EE; border-radius: 0;
+    color: #374151; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+    transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .ad-page-btn:hover:not(:disabled) { border-color: #1E3A8A; color: #1E3A8A; }
+  .ad-page-btn:disabled { color: #CBD5E1; cursor: not-allowed; border-color: #EEF2F7; background: #F8FAFC; }
+
+  /* Edit modal sheet */
+  .ad-sheet { background: #FFFFFF; }
+  .ad-sheet::-webkit-scrollbar { width: 4px; }
+  .ad-sheet::-webkit-scrollbar-track { background: #F8FAFC; }
+  .ad-sheet::-webkit-scrollbar-thumb { background: #CBD5E1; }
+
+  .ad-modal-input {
+    width: 100%; box-sizing: border-box;
+    height: 48px; padding: 0 12px;
+    background: #F8FAFC; border: 1px solid #DDE3EE; border-radius: 0;
+    color: #0A1628; font-size: 15px; font-weight: 600;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none; appearance: none; -webkit-appearance: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .ad-modal-input:focus { border-color: #1E3A8A; background: #FFFFFF; }
+  .ad-modal-input.err { border-color: #DC2626; background: #FEF2F2; }
+
+  .ad-stepper-wrap {
+    display: flex; align-items: center;
+    border: 1px solid #DDE3EE; height: 48px; overflow: hidden;
+    background: #F8FAFC;
+  }
+  .ad-stepper-btn {
+    width: 48px; height: 100%; flex-shrink: 0;
+    background: transparent; border: none;
+    color: #6B7A99; font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1; transition: color 0.1s, background 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ad-stepper-btn:hover { background: #EEF2F7; color: #1E3A8A; }
+  .ad-stepper-btn:disabled { color: #DDE3EE; cursor: not-allowed; }
+
+  .ad-submit-btn {
+    width: 100%; height: 56px;
+    background: #1E3A8A; border: none; border-radius: 0;
+    color: #FFFFFF; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+    transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .ad-submit-btn:hover:not(:disabled) { background: #1E40AF; }
+  .ad-submit-btn:disabled { background: #93C5FD; cursor: not-allowed; }
+
+  .ad-close-btn {
+    background: #F8FAFC; border: 1px solid #DDE3EE; border-radius: 0;
+    width: 40px; height: 40px;
+    color: #374151; font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ad-close-btn:hover { background: #EEF2F7; border-color: #94A3B8; }
+
+  @media (max-width: 540px) {
+    .ad-totals-grid { grid-template-columns: 1fr 1fr !important; }
+    .ad-header-row { flex-direction: column !important; align-items: flex-start !important; }
+    .ad-entry-top { flex-direction: column !important; gap: 8px !important; }
+    .ad-stats-4 { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+`;
+
+/* ─── Field label ────────────────────────────────────────────────── */
+const FLabel = ({ text, required }) => (
+  <div style={{
+    fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
+    textTransform: "uppercase", color: C.mid, marginBottom: "8px",
+    fontFamily: "'IBM Plex Sans', sans-serif",
+  }}>
+    {text}{required && <span style={{ color: C.navy, marginLeft: "3px" }}>*</span>}
+  </div>
+);
+
+/* ─── Field error ────────────────────────────────────────────────── */
+const FErr = ({ msg }) => (
+  <p style={{
+    margin: "5px 0 0", fontSize: "11px", fontWeight: "600",
+    color: C.danger, letterSpacing: "0.02em",
+  }}>{msg}</p>
+);
+
+/* ─── Section divider ────────────────────────────────────────────── */
+const SDivider = ({ label }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+    <div style={{ flex: 1, height: "1px", background: C.border }} />
+    <span style={{
+      fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+      textTransform: "uppercase", color: C.dim, whiteSpace: "nowrap",
+    }}>{label}</span>
+    <div style={{ flex: 1, height: "1px", background: C.border }} />
+  </div>
+);
+
+/* ─── Stepper ────────────────────────────────────────────────────── */
 function Stepper({ label, name, step = 1, required = true, register, setValue, watch, prefix = "" }) {
   const val = typeof watch(name) === "number" ? watch(name) : 0;
   const adj = (delta) => setValue(name, Math.max(0, val + delta));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-      <label style={LABEL}>{label}{required && " *"}</label>
-      <div style={{
-        display: "flex", alignItems: "center",
-        border: `1px solid ${C.border}`, borderRadius: "3px",
-        overflow: "hidden", height: "42px", background: C.surface,
-      }}>
-        <button type="button" onClick={() => adj(-step)} style={{
-          width: "42px", height: "100%", flexShrink: 0,
-          background: "transparent", border: "none",
-          borderRight: `1px solid ${C.border}`,
-          color: val === 0 ? C.border : C.muted,
-          fontSize: "18px", cursor: val === 0 ? "not-allowed" : "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          lineHeight: 1, transition: "color 0.1s", WebkitTapHighlightColor: "transparent",
-        }}>−</button>
+    <div>
+      <FLabel text={label} required={required} />
+      <div className="ad-stepper-wrap">
+        <button
+          type="button" className="ad-stepper-btn"
+          onClick={() => adj(-step)} disabled={val === 0}
+          style={{ borderRight: `1px solid ${C.border}` }}
+        >−</button>
 
         <div style={{
           flex: 1, display: "flex", alignItems: "center",
-          justifyContent: "center", gap: "3px", pointerEvents: "none",
+          justifyContent: "center", gap: "4px", pointerEvents: "none",
         }}>
-          {prefix && <span style={{ fontSize: "13px", color: C.dim, fontWeight: "600" }}>{prefix}</span>}
+          {prefix && (
+            <span style={{ fontSize: "14px", color: C.muted, fontWeight: "600" }}>{prefix}</span>
+          )}
           <span style={{
-            fontSize: "18px", fontWeight: "700", color: C.text,
-            fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: "22px", fontWeight: "700", color: C.ink, letterSpacing: "0.02em",
           }}>{val.toLocaleString("en-IN")}</span>
         </div>
 
         <input type="number" style={{ display: "none" }}
-          {...register(name, { valueAsNumber: true, min: 0,
-            required: required ? `${label} is required` : false })} />
+          {...register(name, {
+            valueAsNumber: true, min: 0,
+            required: required ? `${label} is required` : false,
+          })} />
 
-        <button type="button" onClick={() => adj(step)} style={{
-          width: "42px", height: "100%", flexShrink: 0,
-          background: "transparent", border: "none",
-          borderLeft: `1px solid ${C.border}`,
-          color: C.muted, fontSize: "18px", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          lineHeight: 1, WebkitTapHighlightColor: "transparent",
-        }}>+</button>
+        <button
+          type="button" className="ad-stepper-btn"
+          onClick={() => adj(step)}
+          style={{ borderLeft: `1px solid ${C.border}` }}
+        >+</button>
       </div>
     </div>
   );
 }
 
-/* ─── Edit Entry Modal ───────────────────────────────────────────────── */
+/* ─── Edit Entry Modal ───────────────────────────────────────────── */
 function EditEntryModal({ entry, onClose, onSaved }) {
   const [loading,     setLoading]     = useState(false);
   const [serverError, setServerError] = useState("");
@@ -123,8 +277,7 @@ function EditEntryModal({ entry, onClose, onSaved }) {
         leaveDays:    Number(data.leaveDays),
         incentive:    Number(data.incentive),
       });
-      onSaved();
-      onClose();
+      onSaved(); onClose();
     } catch (err) {
       setServerError(err.response?.data?.message || "Update failed");
     } finally {
@@ -138,124 +291,135 @@ function EditEntryModal({ entry, onClose, onSaved }) {
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 200,
-        background: "rgba(5,5,10,0.88)", backdropFilter: "blur(6px)",
+        background: "rgba(10,22,40,0.72)",
         display: "flex", alignItems: "flex-end", justifyContent: "center",
         fontFamily: "'IBM Plex Sans', sans-serif",
       }}
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={e => e.target === e.currentTarget && !loading && onClose()}
     >
       <div
-        onClick={e => e.stopPropagation()}
-        className="fade-up"
+        className="ad-sheet"
         style={{
-          background: C.elev, border: `1px solid ${C.border}`,
-          borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "540px",
-          maxHeight: "94dvh", overflowY: "auto",
+          borderRadius: "16px 16px 0 0",
+          width: "100%", maxWidth: "520px",
+          maxHeight: "94dvh", overflowY: "auto", overflowX: "hidden",
+          paddingBottom: "env(safe-area-inset-bottom, 24px)",
           WebkitOverflowScrolling: "touch",
+          animation: "slideUpSheet 0.3s cubic-bezier(0.22,1,0.36,1) both",
+          position: "relative",
         }}
+        onClick={e => e.stopPropagation()}
       >
         {/* Sticky header */}
         <div style={{
           position: "sticky", top: 0, zIndex: 10,
-          background: C.elev, padding: "16px 20px 14px",
-          borderBottom: `1px solid ${C.border}`,
+          background: C.card, borderBottom: `1.5px solid ${C.border}`,
+          padding: "14px 20px 14px",
         }}>
-          <div style={{ width: 32, height: 3, background: C.border, borderRadius: 2, margin: "0 auto 14px" }} />
+          <div style={{
+            width: 40, height: 4, background: C.border,
+            borderRadius: 2, margin: "0 auto 14px",
+          }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h2 style={{
-                fontSize: "18px", fontWeight: "800", color: C.text, margin: 0,
                 fontFamily: "'Barlow Condensed', sans-serif",
-                letterSpacing: "0.05em", textTransform: "uppercase",
+                fontSize: "22px", fontWeight: "700", color: C.ink,
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                margin: 0, lineHeight: 1,
               }}>Edit Entry</h2>
-              <p style={{ fontSize: "11px", color: C.muted, marginTop: "3px", letterSpacing: "0.06em" }}>
-                JC: <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: C.blueL }}>
-                  {entry.jcNo}
-                </span>
+              <p style={{
+                fontSize: "11px", color: C.muted,
+                marginTop: "4px", letterSpacing: "0.08em",
+                textTransform: "uppercase", fontWeight: "600",
+              }}>
+                JC: <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace", color: C.navy,
+                }}>{entry.jcNo}</span>
               </p>
             </div>
-            <button onClick={onClose} style={{
-              background: C.card, border: `1px solid ${C.border}`,
-              borderRadius: "3px", width: 34, height: 34,
-              color: C.muted, fontSize: "16px", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              WebkitTapHighlightColor: "transparent",
-            }}>×</button>
+            <button className="ad-close-btn" type="button" onClick={onClose} disabled={loading}>×</button>
           </div>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} style={{
-          display: "flex", flexDirection: "column", gap: "18px",
-          padding: "20px 20px 32px",
-        }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          style={{ display: "flex", flexDirection: "column", gap: "20px", padding: "24px 20px 32px" }}
+        >
+          {/* Date + Category */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
             <div>
-              <label style={LABEL}>Date *</label>
-              <input type="date" style={{ ...INPUT, colorScheme: "dark" }}
-                {...register("date", { required: "Date is required" })} />
-              {errors.date && <p style={ERR}>{errors.date.message}</p>}
+              <FLabel text="Date" required />
+              <input
+                type="date"
+                className={`ad-modal-input${errors.date ? " err" : ""}`}
+                style={{ colorScheme: "light" }}
+                {...register("date", { required: "Date is required" })}
+              />
+              {errors.date && <FErr msg={errors.date.message} />}
             </div>
             <div>
-              <label style={LABEL}>Category *</label>
-              <select style={{
-                ...INPUT, cursor: "pointer", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2360607A' d='M5 7L0 2h10z'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-                paddingRight: "32px",
-              }}
+              <FLabel text="Category" required />
+              <select
+                className={`ad-modal-input${errors.category ? " err" : ""}`}
+                style={{
+                  cursor: "pointer",
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231E3A8A' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+                  paddingRight: "36px",
+                }}
                 {...register("category", { required: "Category is required" })}
               >
                 <option value="">Select…</option>
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              {errors.category && <p style={ERR}>{errors.category.message}</p>}
+              {errors.category && <FErr msg={errors.category.message} />}
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          {/* JC + Vehicle */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
             <div>
-              <label style={LABEL}>JC No *</label>
-              <input style={{ ...INPUT, fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px" }}
-                type="text" {...register("jcNo", { required: "JC No is required" })} />
-              {errors.jcNo && <p style={ERR}>{errors.jcNo.message}</p>}
+              <FLabel text="JC No" required />
+              <input
+                type="text"
+                className={`ad-modal-input${errors.jcNo ? " err" : ""}`}
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", letterSpacing: "0.04em" }}
+                {...register("jcNo", { required: "JC No is required" })}
+              />
+              {errors.jcNo && <FErr msg={errors.jcNo.message} />}
             </div>
             <div>
-              <label style={LABEL}>Vehicle No</label>
-              <input style={{ ...INPUT, fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px" }}
-                type="text" {...register("vehicleNo")} />
+              <FLabel text="Vehicle No" />
+              <input
+                type="text"
+                className="ad-modal-input"
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", letterSpacing: "0.04em" }}
+                {...register("vehicleNo")}
+              />
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ flex: 1, height: "1px", background: C.border2 }} />
-            <span style={{
-              fontSize: "8px", letterSpacing: "0.18em", textTransform: "uppercase",
-              color: C.dim, fontWeight: "700",
-            }}>Financials & Time</span>
-            <div style={{ flex: 1, height: "1px", background: C.border2 }} />
-          </div>
+          <SDivider label="Financials & Hours" />
 
           <Stepper label="Labour Amount" name="labourAmount" step={100} prefix="₹" {...sp} />
-          <Stepper label="Leave Days"    name="leaveDays"    step={1}            {...sp} />
           <Stepper label="Hours Worked"  name="hoursWorked"  step={1}            {...sp} />
+          <Stepper label="Leave Days"    name="leaveDays"    step={1}            {...sp} />
           <Stepper label="Incentive"     name="incentive"    step={100} prefix="₹" required={false} {...sp} />
 
           {serverError && (
             <div style={{
-              background: "rgba(224,72,72,0.08)", border: `1px solid rgba(224,72,72,0.25)`,
-              borderRadius: "3px", padding: "12px 14px", color: C.red, fontSize: "13px",
-            }}>{serverError}</div>
+              background: "#FEF2F2", border: "1px solid #FECACA",
+              borderLeft: "3px solid #DC2626", padding: "12px 14px",
+            }}>
+              <p style={{ margin: 0, fontSize: "13px", fontWeight: "600", color: "#991B1B" }}>
+                {serverError}
+              </p>
+            </div>
           )}
 
-          <button type="submit" disabled={loading} style={{
-            height: "44px", background: loading ? C.card : C.blue,
-            border: "none", borderRadius: "3px",
-            color: loading ? C.dim : "#FFFFFF",
-            fontSize: "11px", fontWeight: "700", letterSpacing: "0.12em",
-            textTransform: "uppercase", cursor: loading ? "not-allowed" : "pointer",
-            fontFamily: "'IBM Plex Sans', sans-serif", transition: "all 0.15s",
-          }}>
+          <button type="submit" className="ad-submit-btn" disabled={loading}>
             {loading ? "Saving…" : "Save Changes"}
           </button>
         </form>
@@ -264,90 +428,71 @@ function EditEntryModal({ entry, onClose, onSaved }) {
   );
 }
 
-/* ─── Entry Card ─────────────────────────────────────────────────────── */
+/* ─── Entry Card ─────────────────────────────────────────────────── */
 function EntryCard({ entry, onEdit, onDelete }) {
-  const cs   = CAT_STYLES[entry.category] || { bg: `rgba(96,96,122,0.12)`, color: C.muted };
-  const date = new Date(entry.date).toLocaleDateString("en-IN", {
+  const color = CAT_COLORS[entry.category] || C.muted;
+  const date  = new Date(entry.date).toLocaleDateString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
   });
 
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: "4px", overflow: "hidden",
-    }}>
-      <div style={{
-        padding: "14px 16px 12px",
+    <div className="ad-entry-card" style={{ borderLeft: `3px solid ${color}` }}>
+      {/* Top */}
+      <div className="ad-entry-top" style={{
+        padding: "14px 18px 12px",
         display: "flex", justifyContent: "space-between",
         alignItems: "flex-start", gap: "12px",
       }}>
         <div style={{ minWidth: 0 }}>
-          <span style={{
-            display: "inline-block", padding: "3px 10px",
-            background: cs.bg, color: cs.color,
-            fontSize: "10px", fontWeight: "700", letterSpacing: "0.08em",
-            textTransform: "uppercase", borderRadius: "2px", marginBottom: "6px",
-          }}>{entry.category}</span>
           <div style={{
-            fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px",
-            color: C.muted, letterSpacing: "0.06em",
+            display: "inline-block", padding: "3px 8px",
+            background: `${color}18`, color,
+            fontSize: "9px", fontWeight: "700", letterSpacing: "0.1em",
+            textTransform: "uppercase", marginBottom: "7px",
+          }}>{entry.category}</div>
+          <div style={{
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: "12px", color: C.mid, letterSpacing: "0.05em",
           }}>
             {entry.jcNo}
             {entry.vehicleNo && (
-              <span style={{ marginLeft: "12px", color: C.dim }}>· {entry.vehicleNo}</span>
+              <span style={{ marginLeft: "10px", color: C.dim }}>· {entry.vehicleNo}</span>
             )}
           </div>
         </div>
 
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontSize: "12px", color: C.dim, letterSpacing: "0.04em", marginBottom: "8px" }}>
-            {date}
-          </div>
+          <div style={{
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: "11px", color: C.dim, letterSpacing: "0.04em", marginBottom: "10px",
+          }}>{date}</div>
           <div style={{ display: "flex", gap: "16px", justifyContent: "flex-end" }}>
-            <button onClick={() => onEdit(entry)} style={{
-              background: "transparent", border: "none",
-              color: C.blueL, fontSize: "11px", fontWeight: "600",
-              cursor: "pointer", letterSpacing: "0.08em",
-              fontFamily: "'IBM Plex Sans', sans-serif",
-              padding: "0", textTransform: "uppercase",
-            }}>Edit</button>
-            <button
-              onClick={() => onDelete(entry._id)}
-              style={{
-                background: "transparent", border: "none",
-                color: C.dim, fontSize: "11px", fontWeight: "600",
-                cursor: "pointer", letterSpacing: "0.08em",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                padding: "0", textTransform: "uppercase", transition: "color 0.15s",
-              }}
-              onMouseOver={e => e.currentTarget.style.color = C.red}
-              onMouseOut={e => e.currentTarget.style.color = C.dim}
-            >Delete</button>
+            <button className="ad-edit-btn" onClick={() => onEdit(entry)}>Edit</button>
+            <button className="ad-delete-btn" onClick={() => onDelete(entry._id)}>Delete</button>
           </div>
         </div>
       </div>
 
-      <div style={{
+      {/* Stats row */}
+      <div className="ad-stats-4" style={{
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
-        borderTop: `1px solid ${C.border2}`,
+        gap: "1px", background: C.border,
+        borderTop: `1px solid ${C.border}`,
       }}>
         {[
           { label: "Labour",    value: `₹${Number(entry.labourAmount || 0).toLocaleString("en-IN")}`, color: C.amber  },
-          { label: "Hours",     value: entry.hoursWorked,                                              color: C.greenL },
-          { label: "Leave",     value: `${entry.leaveDays}d`,                                          color: C.muted  },
-          { label: "Incentive", value: `₹${Number(entry.incentive || 0).toLocaleString("en-IN")}`,    color: C.blueL  },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{
-            padding: "10px 8px", textAlign: "center",
-            borderRight: `1px solid ${C.border2}`,
-          }}>
+          { label: "Hours",     value: `${entry.hoursWorked || 0}h`,                                  color: C.success },
+          { label: "Leave",     value: `${entry.leaveDays || 0}d`,                                    color: C.muted  },
+          { label: "Incentive", value: `₹${Number(entry.incentive || 0).toLocaleString("en-IN")}`,   color: C.navy   },
+        ].map(({ label, value, color: c }) => (
+          <div key={label} style={{ background: C.cardAlt, padding: "10px 8px", textAlign: "center" }}>
             <div style={{
               fontSize: "8px", fontWeight: "700", letterSpacing: "0.14em",
               textTransform: "uppercase", color: C.dim, marginBottom: "4px",
             }}>{label}</div>
             <div style={{
-              fontSize: "14px", fontWeight: "700", color,
-              fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "16px", fontWeight: "700", color: c, letterSpacing: "0.02em",
             }}>{value}</div>
           </div>
         ))}
@@ -356,17 +501,28 @@ function EntryCard({ entry, onEdit, onDelete }) {
   );
 }
 
-/* ─── Main page ──────────────────────────────────────────────────────── */
+/* ─── Main page ──────────────────────────────────────────────────── */
 export default function AdminTechnicianDetail() {
   const { userId } = useParams();
   const navigate   = useNavigate();
 
-  const [data,         setData]      = useState(null);
-  const [loading,      setLoading]   = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false); // ← 403 state
-  const [page,         setPage]      = useState(1);
-  const [editingEntry, setEditing]   = useState(null);
-  const [exporting,    setExporting] = useState(false);
+  const [data,         setData]         = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [page,         setPage]         = useState(1);
+  const [editingEntry, setEditing]      = useState(null);
+  const [exporting,    setExporting]    = useState(false);
+
+  /* inject styles */
+  useEffect(() => {
+    const id = "ad-styles";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id; el.textContent = INJECTED;
+      document.head.appendChild(el);
+    }
+    return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -374,16 +530,8 @@ export default function AdminTechnicianDetail() {
       setData(r.data);
       setAccessDenied(false);
     } catch (e) {
-      /**
-       * 403 means this technician is not in the requesting admin's branch.
-       * Show a dedicated access-denied screen instead of an empty/broken page.
-       * This protects against URL-guessing attempts.
-       */
-      if (e.response?.status === 403) {
-        setAccessDenied(true);
-      } else {
-        console.error(e);
-      }
+      if (e.response?.status === 403) setAccessDenied(true);
+      else console.error(e);
     } finally {
       setLoading(false);
     }
@@ -418,13 +566,10 @@ export default function AdminTechnicianDetail() {
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
       const a    = Object.assign(document.createElement("a"), {
-        href: url,
-        download: `${user?.name || "technician"}_entries.csv`,
+        href: url, download: `${user?.name || "technician"}_entries.csv`,
       });
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
     } catch {
       alert("Export failed. Please try again.");
     } finally {
@@ -433,69 +578,59 @@ export default function AdminTechnicianDetail() {
   };
 
   /* ── Loading ── */
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100dvh", background: C.bg }}>
-        <Navbar />
-        <div style={{ textAlign: "center", padding: "100px 20px", color: C.dim }}>
-          <div style={{
-            width: "1px", height: "32px", background: C.blue,
-            margin: "0 auto 16px", opacity: 0.6,
-          }} />
-          <p style={{ fontSize: "11px", letterSpacing: "0.16em", textTransform: "uppercase" }}>
-            Loading…
-          </p>
-        </div>
+  if (loading) return (
+    <div style={{ minHeight: "100dvh", background: C.pageBg }}>
+      <Navbar />
+      <div style={{ textAlign: "center", padding: "100px 20px" }}>
+        <div style={{
+          width: "24px", height: "24px",
+          border: `2px solid ${C.border}`, borderTop: `2px solid ${C.navy}`,
+          borderRadius: "50%", margin: "0 auto 16px",
+          animation: "spin 0.8s linear infinite",
+        }} />
+        <p style={{
+          fontSize: "10px", letterSpacing: "0.18em", textTransform: "uppercase",
+          fontWeight: "700", color: C.dim,
+        }}>Loading…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   /* ── Access denied ── */
-  if (accessDenied) {
-    return (
-      <div style={{ minHeight: "100dvh", background: C.bg }}>
-        <Navbar />
-        <div style={{ padding: "28px 16px", maxWidth: "960px", margin: "0 auto" }}>
+  if (accessDenied) return (
+    <div style={{ minHeight: "100dvh", background: C.pageBg }}>
+      <Navbar />
+      <div style={{ padding: "28px 16px", maxWidth: "680px", margin: "0 auto" }}>
+        <button className="ad-back-btn" onClick={() => navigate(-1)}>← Back</button>
+        <div style={{
+          background: "#FEF2F2", border: "1px solid #FECACA",
+          borderLeft: "3px solid #DC2626", padding: "40px 24px", textAlign: "center",
+        }}>
+          <div style={{ fontSize: "28px", marginBottom: "10px" }}>🔒</div>
+          <p style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: "22px", fontWeight: "700", color: C.danger,
+            letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "8px",
+          }}>Access Denied</p>
+          <p style={{ fontSize: "13px", color: "#991B1B", lineHeight: 1.6 }}>
+            This technician is not assigned to your branch.<br />
+            Contact your developer if you believe this is an error.
+          </p>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate("/admin")}
             style={{
-              background: "transparent", border: "none", color: C.dim,
-              fontSize: "11px", cursor: "pointer", padding: "0",
+              marginTop: "20px", padding: "10px 24px",
+              background: "transparent", border: `1px solid ${C.border}`,
+              borderRadius: "0", color: C.muted,
+              fontSize: "10px", fontWeight: "700", letterSpacing: "0.14em",
+              textTransform: "uppercase", cursor: "pointer",
               fontFamily: "'IBM Plex Sans', sans-serif",
-              letterSpacing: "0.10em", textTransform: "uppercase",
-              marginBottom: "20px", display: "flex", alignItems: "center", gap: "6px",
             }}
-          >← Back</button>
-          <div style={{
-            background: "rgba(224,72,72,0.06)", border: `1px solid rgba(224,72,72,0.25)`,
-            borderRadius: "4px", padding: "48px 24px", textAlign: "center",
-          }}>
-            <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔒</div>
-            <p style={{ fontSize: "16px", fontWeight: "700", color: C.red, marginBottom: "8px" }}>
-              Access Denied
-            </p>
-            <p style={{ fontSize: "13px", color: C.muted, lineHeight: 1.6 }}>
-              This technician is not assigned to your branch.<br />
-              Please contact your developer if you believe this is an error.
-            </p>
-            <button
-              onClick={() => navigate("/admin")}
-              style={{
-                marginTop: "20px", padding: "8px 24px",
-                background: "transparent", border: `1px solid ${C.border}`,
-                borderRadius: "3px", color: C.muted,
-                fontSize: "11px", fontWeight: "600", letterSpacing: "0.10em",
-                textTransform: "uppercase", cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-              }}
-            >
-              ← Back to Dashboard
-            </button>
-          </div>
+          >← Back to Dashboard</button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   const { user, entries = [], total = 0, pages = 1 } = data || {};
 
@@ -508,8 +643,9 @@ export default function AdminTechnicianDetail() {
 
   return (
     <div style={{
-      minHeight: "100dvh", background: C.bg,
-      fontFamily: "'IBM Plex Sans', sans-serif", color: C.text,
+      minHeight: "100dvh", background: C.pageBg,
+      fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+      WebkitFontSmoothing: "antialiased",
     }}>
       <Navbar />
 
@@ -521,72 +657,46 @@ export default function AdminTechnicianDetail() {
         />
       )}
 
-      <div style={{ padding: "28px 16px 48px", maxWidth: "960px", margin: "0 auto" }}>
+      <div style={{ padding: "24px 16px 60px", maxWidth: "900px", margin: "0 auto" }}>
 
         {/* ── Header ── */}
-        <div style={{
-          marginBottom: "28px", borderBottom: `1px solid ${C.border2}`, paddingBottom: "24px",
-        }}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              background: "transparent", border: "none", color: C.dim,
-              fontSize: "11px", cursor: "pointer", padding: "0",
-              fontFamily: "'IBM Plex Sans', sans-serif",
-              letterSpacing: "0.10em", textTransform: "uppercase",
-              marginBottom: "14px", display: "flex", alignItems: "center", gap: "6px",
-              transition: "color 0.15s",
-            }}
-            onMouseOver={e => e.currentTarget.style.color = C.muted}
-            onMouseOut={e => e.currentTarget.style.color = C.dim}
-          >← Back</button>
+        <div className="ad-a1">
+          <button className="ad-back-btn" onClick={() => navigate(-1)}>← Back</button>
 
-          <div style={{
+          <div className="ad-header-row" style={{
             display: "flex", justifyContent: "space-between",
             alignItems: "flex-start", gap: "16px", flexWrap: "wrap",
+            marginBottom: "28px", paddingBottom: "20px",
+            borderBottom: `1px solid ${C.border}`,
           }}>
             <div>
-              <h1 style={{
-                fontSize: "28px", fontWeight: "800", margin: 0,
-                fontFamily: "'Barlow Condensed', sans-serif",
-                letterSpacing: "0.05em", textTransform: "uppercase",
-              }}>{user?.name}</h1>
               <div style={{
-                display: "flex", gap: "10px", marginTop: "6px",
-                flexWrap: "wrap", alignItems: "center",
-              }}>
+                fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
+                textTransform: "uppercase", color: C.navy, marginBottom: "5px",
+              }}>Technician Detail</div>
+              <h1 style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "34px", fontWeight: "700", color: C.ink,
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                margin: "0 0 8px", lineHeight: 1,
+              }}>{user?.name}</h1>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{
-                  fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px",
-                  color: C.blueL, letterSpacing: "0.08em",
-                }}>
-                  {user?.technicianId}
-                </span>
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "12px", color: C.navy, letterSpacing: "0.08em",
+                  fontWeight: "600", background: "#EEF2F7",
+                  border: `1px solid ${C.border}`, padding: "2px 8px",
+                }}>{user?.technicianId}</span>
                 <span style={{ fontSize: "10px", color: C.dim }}>·</span>
-                <span style={{ fontSize: "12px", color: C.muted, letterSpacing: "0.06em" }}>
-                  {user?.branch} Branch
-                </span>
+                <span style={{ fontSize: "12px", color: C.muted }}>{user?.branch} Branch</span>
                 <span style={{ fontSize: "10px", color: C.dim }}>·</span>
-                <span style={{ fontSize: "12px", color: C.dim }}>
-                  {total} entr{total === 1 ? "y" : "ies"}
-                </span>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "11px", color: C.dim,
+                }}>{total} entr{total === 1 ? "y" : "ies"}</span>
               </div>
             </div>
-
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              style={{
-                padding: "9px 18px", background: "transparent",
-                border: `1px solid ${C.border}`, borderRadius: "3px",
-                color: exporting ? C.dim : C.muted,
-                fontSize: "10px", fontWeight: "700", letterSpacing: "0.12em",
-                textTransform: "uppercase", cursor: exporting ? "not-allowed" : "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif", transition: "all 0.15s",
-                flexShrink: 0,
-              }}
-              onMouseOver={e => { if (!exporting) { e.currentTarget.style.borderColor = C.blueL; e.currentTarget.style.color = C.blueL; }}}
-              onMouseOut={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
-            >
+            <button className="ad-export-btn" onClick={handleExport} disabled={exporting}>
               {exporting ? "Exporting…" : "↓ Export CSV"}
             </button>
           </div>
@@ -594,29 +704,32 @@ export default function AdminTechnicianDetail() {
 
         {/* ── Totals strip ── */}
         {entries.length > 0 && (
-          <div style={{
-            display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "8px", marginBottom: "24px",
+          <div className="ad-a2 ad-totals-grid" style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "1px", background: C.border,
+            border: `1px solid ${C.border}`,
+            marginBottom: "20px",
           }}>
             {[
               { label: "Total Labour",    value: `₹${totals.labour.toLocaleString("en-IN")}`,    accent: C.amber  },
-              { label: "Total Hours",     value: `${totals.hours} hrs`,                           accent: C.greenL },
-              { label: "Total Incentive", value: `₹${totals.incentive.toLocaleString("en-IN")}`, accent: C.blueL  },
-              { label: "Total Leave",     value: `${totals.leave} days`,                          accent: C.dim    },
+              { label: "Total Hours",     value: `${totals.hours} hrs`,                           accent: C.success },
+              { label: "Total Incentive", value: `₹${totals.incentive.toLocaleString("en-IN")}`, accent: C.navy   },
+              { label: "Total Leave",     value: `${totals.leave} days`,                          accent: C.muted  },
             ].map(({ label, value, accent }) => (
               <div key={label} style={{
-                background: C.card, border: `1px solid ${C.border}`,
-                borderRadius: "4px", padding: "12px 14px",
-                borderTop: `2px solid ${accent}`,
+                background: C.card, padding: "16px 14px",
+                borderTop: `3px solid ${accent}`,
               }}>
-                <p style={{
-                  fontSize: "8px", fontWeight: "700", letterSpacing: "0.14em",
-                  textTransform: "uppercase", color: C.muted, marginBottom: "6px",
-                }}>{label}</p>
-                <p style={{
-                  fontSize: "18px", fontWeight: "800", color: C.text,
-                  fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
-                }}>{value}</p>
+                <div style={{
+                  fontSize: "8px", fontWeight: "700", letterSpacing: "0.16em",
+                  textTransform: "uppercase", color: C.dim, marginBottom: "8px",
+                }}>{label}</div>
+                <div style={{
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: "22px", fontWeight: "700", color: C.ink,
+                  letterSpacing: "0.02em",
+                }}>{value}</div>
               </div>
             ))}
           </div>
@@ -624,18 +737,27 @@ export default function AdminTechnicianDetail() {
 
         {/* ── Entries ── */}
         {entries.length === 0 ? (
-          <div style={{
-            background: C.card, border: `1px solid ${C.border}`, borderRadius: "4px",
-            padding: "64px 20px", textAlign: "center",
+          <div className="ad-a3" style={{
+            background: C.card, border: `1px solid ${C.border}`,
+            padding: "60px 20px", textAlign: "center",
           }}>
-            <p style={{ fontSize: "14px", color: C.muted, fontWeight: "600" }}>No entries yet</p>
-            <p style={{ fontSize: "12px", color: C.dim, marginTop: "6px" }}>
+            <div style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "20px", fontWeight: "700",
+              color: C.dim, letterSpacing: "0.08em",
+              textTransform: "uppercase", marginBottom: "6px",
+            }}>No Entries Yet</div>
+            <p style={{ fontSize: "13px", color: C.dim, margin: 0 }}>
               This technician hasn't logged any work entries.
             </p>
           </div>
         ) : (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div className="ad-a3">
+            <div style={{
+              display: "flex", flexDirection: "column", gap: "1px",
+              background: C.border, border: `1px solid ${C.border}`,
+              marginBottom: "24px",
+            }}>
               {entries.map(e => (
                 <EntryCard
                   key={e._id}
@@ -650,45 +772,29 @@ export default function AdminTechnicianDetail() {
             {pages > 1 && (
               <div style={{
                 display: "flex", justifyContent: "center",
-                alignItems: "center", gap: "16px", marginTop: "28px",
+                alignItems: "center", gap: "16px",
               }}>
                 <button
+                  className="ad-page-btn"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  style={{
-                    padding: "8px 18px", background: "transparent",
-                    border: `1px solid ${page === 1 ? C.border2 : C.border}`,
-                    borderRadius: "3px",
-                    color: page === 1 ? C.dim : C.muted,
-                    cursor: page === 1 ? "not-allowed" : "pointer",
-                    fontSize: "11px", fontWeight: "600", letterSpacing: "0.10em",
-                    textTransform: "uppercase", fontFamily: "'IBM Plex Sans', sans-serif",
-                  }}
                 >← Prev</button>
 
                 <span style={{
-                  fontSize: "11px", color: C.dim,
-                  fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.08em",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "11px", color: C.dim, letterSpacing: "0.08em",
                 }}>
                   {page} / {pages}
                 </span>
 
                 <button
+                  className="ad-page-btn"
                   onClick={() => setPage(p => Math.min(pages, p + 1))}
                   disabled={page === pages}
-                  style={{
-                    padding: "8px 18px", background: "transparent",
-                    border: `1px solid ${page === pages ? C.border2 : C.border}`,
-                    borderRadius: "3px",
-                    color: page === pages ? C.dim : C.muted,
-                    cursor: page === pages ? "not-allowed" : "pointer",
-                    fontSize: "11px", fontWeight: "600", letterSpacing: "0.10em",
-                    textTransform: "uppercase", fontFamily: "'IBM Plex Sans', sans-serif",
-                  }}
                 >Next →</button>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
