@@ -4,213 +4,295 @@ import Navbar from "../components/Navbar";
 import api from "../api/axios";
 import { useAuthStore } from "../store/authStore";
 
-/* ─── Design tokens ─────────────────────────────────────────────────── */
+/* ─── Corporate light tokens ──────────────────────────────────────── */
 const C = {
-  bg:      "#09090E", surface: "#111119", card: "#16161F",
-  elev:    "#1E1E2C", border:  "#23232F", border2: "#1A1A25",
-  text:    "#E2E2EE", muted:   "#60607A", dim:     "#30304A",
-  blue:    "#4C70F5", blueL:  "#7A98F8",
-  green:   "#10C090", greenL: "#4DD8B6",
-  amber:   "#E8A000", amberL: "#FFC033",
-  red:     "#E04848",
-  purple:  "#7C3AED",
+  pageBg:  "#EEF2F7",
+  card:    "#FFFFFF",
+  cardAlt: "#F8FAFC",
+  border:  "#DDE3EE",
+  borderL: "#F1F5F9",
+  navy:    "#1E3A8A",
+  navyHov: "#1E40AF",
+  ink:     "#0A1628",
+  mid:     "#374151",
+  muted:   "#6B7A99",
+  dim:     "#94A3B8",
+  success: "#16A34A",
+  danger:  "#DC2626",
+  amber:   "#D97706",
 };
 
-/* ─── Category config ───────────────────────────────────────────────── */
+const INJECTED = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+  @keyframes abFadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .ab-a1 { animation: abFadeUp 0.3s ease both 0.00s; }
+  .ab-a2 { animation: abFadeUp 0.3s ease both 0.06s; }
+  .ab-a3 { animation: abFadeUp 0.3s ease both 0.12s; }
+  .ab-a4 { animation: abFadeUp 0.3s ease both 0.18s; }
+
+  .ab-branch-pill {
+    padding: 8px 20px;
+    border: 1px solid #DDE3EE;
+    background: #FFFFFF;
+    color: #6B7A99;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0;
+    white-space: nowrap;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ab-branch-pill:hover {
+    border-color: #1E3A8A;
+    color: #1E3A8A;
+  }
+  .ab-branch-pill.active {
+    background: #1E3A8A;
+    border-color: #1E3A8A;
+    color: #FFFFFF;
+  }
+
+  .ab-view-btn {
+    padding: 11px 24px;
+    background: #1E3A8A;
+    border: none;
+    border-radius: 0;
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    transition: background 0.15s;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ab-view-btn:hover { background: #1E40AF; }
+  .ab-view-btn:active { background: #1E3A8A; }
+
+  @media (max-width: 600px) {
+    .ab-stat-grid { grid-template-columns: 1fr 1fr !important; }
+    .ab-action-row { flex-direction: column; align-items: stretch !important; }
+    .ab-view-btn { width: 100%; text-align: center; padding: 14px 24px; }
+  }
+`;
+
+/* ─── Category accent colors for light bg ────────────────────────── */
 const CAT = {
-  "ENGINE REPAIR":    { bar: "#2563EB", label: "#60A5FA" },
-  "GEAR BOX":         { bar: "#DC2626", label: "#F87171" },
-  "ELECTRICAL":       { bar: "#F59E0B", label: "#FBBF24" },
-  "BODY WORK":        { bar: "#16A34A", label: "#4ADE80" },
-  "DIFFERENTIAL":     { bar: "#DB2777", label: "#F472B6" },
-  "TRANSMISSION":     { bar: "#7C3AED", label: "#A78BFA" },
-  "AC & COOLING":     { bar: "#0891B2", label: "#67E8F9" },
-  "EATS FLUSHING":    { bar: "#92400E", label: "#D97706" },
-  "GENERAL SERVICE":  { bar: "#EA580C", label: "#FB923C" },
-  "SCHEDULE SERVICE": { bar: "#4F46E5", label: "#818CF8" },
+  "ENGINE REPAIR":    { bar: "#2563EB", text: "#1E40AF" },
+  "GEAR BOX":         { bar: "#DC2626", text: "#B91C1C" },
+  "ELECTRICAL":       { bar: "#D97706", text: "#B45309" },
+  "BODY WORK":        { bar: "#16A34A", text: "#15803D" },
+  "DIFFERENTIAL":     { bar: "#DB2777", text: "#BE185D" },
+  "TRANSMISSION":     { bar: "#7C3AED", text: "#6D28D9" },
+  "AC & COOLING":     { bar: "#0891B2", text: "#0E7490" },
+  "EATS FLUSHING":    { bar: "#92400E", text: "#78350F" },
+  "GENERAL SERVICE":  { bar: "#EA580C", text: "#C2410C" },
+  "SCHEDULE SERVICE": { bar: "#374151", text: "#1F2937" },
 };
 
-/* ─── KPI card ─────────────────────────────────────────────────────── */
-function KpiCard({ label, value, unit, accent = C.blue }) {
+/* ─── Stat definitions ───────────────────────────────────────────── */
+const STATS = [
+  { key: "technicianCount",       label: "Technicians",      unit: "",        accent: C.navy    },
+  { key: "totalEntries",          label: "Job Cards",         unit: "total",   accent: "#1E40AF" },
+  { key: "totalHours",            label: "Hours Worked",      unit: "hrs",     accent: C.success },
+  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",  unit: "hrs avg", accent: "#15803D" },
+  { key: "totalLabour",           label: "Total Labour",      unit: "",        accent: C.amber   },
+  { key: "totalIncentives",       label: "Incentives Paid",   unit: "",        accent: "#B45309" },
+  { key: "totalLeaveDays",        label: "Leave Days",        unit: "days",    accent: C.muted   },
+];
+
+/* ─── Stat card ──────────────────────────────────────────────────── */
+function StatCard({ label, value, unit, accent }) {
   return (
     <div style={{
-      background: C.card, border: `1px solid ${C.border}`,
-      borderRadius: "4px", padding: "16px 18px",
+      background: C.card,
+      padding: "20px 18px 16px",
+      display: "flex",
+      flexDirection: "column",
       borderLeft: `3px solid ${accent}`,
     }}>
-      <p style={{
-        fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
-        textTransform: "uppercase", color: C.muted, marginBottom: "10px",
+      <div style={{
+        fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+        textTransform: "uppercase", color: C.muted, marginBottom: "12px",
         fontFamily: "'IBM Plex Sans', sans-serif",
-      }}>{label}</p>
-      <p style={{
-        fontSize: "26px", fontWeight: "800", color: C.text, lineHeight: 1,
-        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
-      }}>{value}</p>
+      }}>{label}</div>
+      <div style={{
+        fontFamily: "'Barlow Condensed', sans-serif",
+        fontSize: "32px", fontWeight: "700", color: C.ink,
+        lineHeight: 1, letterSpacing: "0.01em", marginBottom: "5px",
+      }}>{value}</div>
       {unit && (
-        <p style={{
-          fontSize: "10px", color: C.dim, marginTop: "4px",
-          fontWeight: "600", letterSpacing: "0.10em", textTransform: "uppercase",
-        }}>{unit}</p>
+        <div style={{
+          fontSize: "9px", fontWeight: "600", letterSpacing: "0.12em",
+          textTransform: "uppercase", color: C.dim,
+        }}>{unit}</div>
       )}
     </div>
   );
 }
 
-/* ─── Stat definitions ──────────────────────────────────────────────── */
-const STATS = [
-  { key: "technicianCount",       label: "Technicians",      unit: "",        accent: C.blue,   fmt: v => v },
-  { key: "totalEntries",          label: "Job Cards",         unit: "total",   accent: C.blueL,  fmt: v => Number(v).toLocaleString("en-IN") },
-  { key: "totalHours",            label: "Hours Worked",      unit: "hrs",     accent: C.green,  fmt: v => Number(v).toLocaleString("en-IN") },
-  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",  unit: "hrs avg", accent: C.greenL, fmt: v => v },
-  { key: "totalLabour",           label: "Total Labour",      unit: "",        accent: C.amber,  fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
-  { key: "totalIncentives",       label: "Incentives Paid",   unit: "",        accent: C.amberL, fmt: v => `₹${Number(v).toLocaleString("en-IN")}` },
-  { key: "totalLeaveDays",        label: "Leave Days",        unit: "days",    accent: C.dim,    fmt: v => v },
-];
+/* ─── Format helpers ─────────────────────────────────────────────── */
+const fmtStat = (key, v) => {
+  if (key === "totalLabour" || key === "totalIncentives")
+    return `₹${Number(v).toLocaleString("en-IN")}`;
+  return Number(v).toLocaleString("en-IN");
+};
 
-/* ─── Main ──────────────────────────────────────────────────────────── */
+/* ─── Main ───────────────────────────────────────────────────────── */
 export default function AdminBranchDashboard() {
-  const navigate        = useNavigate();
-  const { user }        = useAuthStore();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
 
-  /**
-   * Role flags:
-   *   isSuperAdmin — sees ALL branches, has pill selector, fetches branch list
-   *   isBranchAdmin — sees ONLY their assigned branch, no selector, no branch fetch
-   */
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
-  /**
-   * Branch selection:
-   *   Superadmin  → starts empty, filled after GET /api/admin/branches resolves
-   *   Branch admin → pre-set to user.branch immediately (no fetch needed, no selector shown)
-   *
-   * CRITICAL: branch admins must NEVER call GET /api/admin/branches —
-   * that route is superAdminOnly and would return 403, breaking the page on load.
-   */
-  const [branches,  setBranches]  = useState([]);
-  const [selected,  setSelected]  = useState(isBranchAdmin ? (user?.branch || "") : "");
-  const [stats,     setStats]     = useState(null);
-  const [loadingB,  setLoadingB]  = useState(isSuperAdmin); // only superadmin shows branch-loading state
-  const [loadingS,  setLoadingS]  = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [selected, setSelected] = useState(isBranchAdmin ? (user?.branch || "") : "");
+  const [stats,    setStats]    = useState(null);
+  const [loadingB, setLoadingB] = useState(isSuperAdmin);
+  const [loadingS, setLoadingS] = useState(false);
 
-  /* ── Fetch branch list — superadmin only ── */
+  /* inject styles */
   useEffect(() => {
-    if (!isSuperAdmin) return; // branch admins skip this entirely
+    const id = "ab-styles";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id; el.textContent = INJECTED;
+      document.head.appendChild(el);
+    }
+    return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
+  }, []);
 
+  /* fetch branch list — superadmin only */
+  useEffect(() => {
+    if (!isSuperAdmin) return;
     api.get("/api/admin/branches")
-      .then(r => {
-        setBranches(r.data);
-        if (r.data.length) setSelected(r.data[0]);
-      })
+      .then(r => { setBranches(r.data); if (r.data.length) setSelected(r.data[0]); })
       .catch(console.error)
       .finally(() => setLoadingB(false));
   }, [isSuperAdmin]);
 
-  /* ── Fetch stats for selected branch — both roles ── */
+  /* fetch stats for selected branch */
   useEffect(() => {
     if (!selected) return;
-    setLoadingS(true);
-    setStats(null);
+    setLoadingS(true); setStats(null);
     api.get(`/api/admin/branch/${encodeURIComponent(selected)}`)
       .then(r => setStats(r.data))
       .catch(console.error)
       .finally(() => setLoadingS(false));
   }, [selected]);
 
-  /* ── Render ── */
   return (
     <div style={{
-      minHeight: "100dvh", background: C.bg,
-      fontFamily: "'IBM Plex Sans', sans-serif", color: C.text,
+      minHeight: "100dvh",
+      background: C.pageBg,
+      fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+      WebkitFontSmoothing: "antialiased",
     }}>
       <Navbar />
 
-      <div style={{ padding: "28px 16px 48px", maxWidth: "960px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "28px 16px 64px" }}>
 
         {/* ── Page header ── */}
-        <div style={{ marginBottom: "32px", borderBottom: `1px solid ${C.border2}`, paddingBottom: "24px" }}>
+        <div className="ab-a1" style={{
+          marginBottom: "28px",
+          paddingBottom: "24px",
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <div style={{
+            fontSize: "9px", fontWeight: "700", letterSpacing: "0.22em",
+            textTransform: "uppercase", color: C.navy, marginBottom: "6px",
+          }}>
+            {isSuperAdmin ? "Super Admin" : "Branch Admin"}
+          </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
             <h1 style={{
-              fontSize: "28px", fontWeight: "800", margin: 0,
               fontFamily: "'Barlow Condensed', sans-serif",
-              letterSpacing: "0.05em", textTransform: "uppercase",
+              fontSize: "36px", fontWeight: "700", color: C.ink,
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              margin: 0, lineHeight: 1,
             }}>Branch Dashboard</h1>
             {selected && !loadingS && stats && (
               <span style={{
-                fontSize: "11px", color: C.muted, fontWeight: "600",
-                letterSpacing: "0.10em", textTransform: "uppercase",
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "11px", color: C.navy, fontWeight: "600",
+                letterSpacing: "0.06em", background: "#EEF2F7",
+                border: `1px solid ${C.border}`, padding: "2px 8px",
               }}>
-                {selected} · {stats.technicianCount} Technician{stats.technicianCount !== 1 ? "s" : ""}
+                {stats.technicianCount} tech{stats.technicianCount !== 1 ? "s" : ""}
               </span>
             )}
           </div>
-          <p style={{ color: C.muted, fontSize: "13px", marginTop: "6px" }}>
+          <p style={{
+            fontSize: "13px", color: C.muted,
+            marginTop: "6px", fontWeight: "300", fontStyle: "italic",
+          }}>
             {isSuperAdmin
-              ? "Performance overview · All Branches"
-              : `Performance overview · ${user?.branch || ""} Branch`}
+              ? "Performance overview · All branches"
+              : `Performance overview · ${user?.branch || ""} branch`}
           </p>
         </div>
 
         {/* ── Branch selector — SUPERADMIN ONLY ── */}
         {isSuperAdmin && (
-          loadingB ? (
-            <p style={{ color: C.dim, fontSize: "12px", letterSpacing: "0.12em" }}>
-              LOADING BRANCHES…
-            </p>
-          ) : branches.length === 0 ? (
-            <div style={{
-              background: C.card, border: `1px solid ${C.border}`, borderRadius: "4px",
-              padding: "48px", textAlign: "center", color: C.muted, fontSize: "14px",
-            }}>
-              No branches found. Technicians need to complete profile setup first.
-            </div>
-          ) : (
-            <div style={{
-              display: "flex", gap: "6px", overflowX: "auto",
-              paddingBottom: "4px", marginBottom: "32px",
-              WebkitOverflowScrolling: "touch", scrollbarWidth: "none",
-            }}>
-              {branches.map(b => {
-                const active = selected === b;
-                return (
-                  <button key={b} onClick={() => setSelected(b)} style={{
-                    padding: "7px 18px",
-                    border: `1px solid ${active ? C.blue : C.border}`,
-                    background: active ? "rgba(76,112,245,0.10)" : "transparent",
-                    color: active ? C.blueL : C.muted,
-                    fontWeight: active ? "700" : "500",
-                    fontSize: "11px", letterSpacing: "0.12em",
-                    textTransform: "uppercase", cursor: "pointer",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                    borderRadius: "3px", whiteSpace: "nowrap",
-                    flexShrink: 0, transition: "all 0.15s",
-                  }}>
-                    {b}
-                  </button>
-                );
-              })}
-            </div>
-          )
+          <div className="ab-a2">
+            {loadingB ? (
+              <p style={{
+                fontSize: "10px", letterSpacing: "0.18em", color: C.dim,
+                textTransform: "uppercase", fontWeight: "700",
+              }}>Loading branches…</p>
+            ) : branches.length === 0 ? (
+              <div style={{
+                background: C.card, border: `1px solid ${C.border}`,
+                padding: "48px", textAlign: "center", color: C.muted, fontSize: "13px",
+              }}>
+                No branches found. Technicians need to complete profile setup first.
+              </div>
+            ) : (
+              <div style={{ marginBottom: "28px" }}>
+                <div style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  color: C.dim, textTransform: "uppercase", marginBottom: "10px",
+                }}>Select Branch</div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {branches.map(b => (
+                    <button
+                      key={b}
+                      onClick={() => setSelected(b)}
+                      className={`ab-branch-pill${selected === b ? " active" : ""}`}
+                    >{b}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── Branch badge — BRANCH ADMIN ONLY ── */}
         {isBranchAdmin && selected && (
-          <div style={{ marginBottom: "32px" }}>
+          <div className="ab-a2" style={{ marginBottom: "28px" }}>
             <div style={{
-              display: "inline-flex", alignItems: "center", gap: "10px",
-              background: "rgba(76,112,245,0.08)",
-              border: `1px solid rgba(76,112,245,0.25)`,
-              borderRadius: "4px", padding: "8px 16px",
+              display: "inline-flex", alignItems: "center", gap: "12px",
+              background: C.card, border: `1px solid ${C.border}`,
+              borderLeft: `3px solid ${C.navy}`, padding: "12px 18px",
             }}>
               <div style={{
                 width: "6px", height: "6px", borderRadius: "50%",
-                background: C.blue, flexShrink: 0,
+                background: C.navy, flexShrink: 0,
               }} />
               <span style={{
-                fontSize: "11px", fontWeight: "700", letterSpacing: "0.14em",
-                textTransform: "uppercase", color: C.blueL,
+                fontSize: "10px", fontWeight: "700", letterSpacing: "0.16em",
+                textTransform: "uppercase", color: C.navy,
                 fontFamily: "'IBM Plex Sans', sans-serif",
               }}>
                 {selected} Branch
@@ -222,119 +304,111 @@ export default function AdminBranchDashboard() {
         {/* ── Stats section ── */}
         {selected && (
           loadingS ? (
-            <div style={{ textAlign: "center", padding: "80px 0", color: C.dim }}>
-              <div style={{
-                width: "1px", height: "32px", background: C.blue,
-                margin: "0 auto 16px", opacity: 0.6,
-              }} />
-              <p style={{ fontSize: "11px", letterSpacing: "0.16em", textTransform: "uppercase" }}>
-                Loading {selected}…
-              </p>
+            <div style={{ textAlign: "center", padding: "80px 0" }}>
+              <div style={{ width: "1px", height: "32px", background: C.navy, margin: "0 auto 16px", opacity: 0.4 }} />
+              <p style={{
+                fontSize: "10px", letterSpacing: "0.18em", textTransform: "uppercase",
+                fontWeight: "700", color: C.dim,
+              }}>Loading {selected}…</p>
             </div>
           ) : stats ? (
             <>
-              {/* ── Branch action row ── */}
-              <div style={{
+              {/* Action row */}
+              <div className="ab-a3 ab-action-row" style={{
                 display: "flex", justifyContent: "space-between",
-                alignItems: "center", marginBottom: "20px", gap: "12px",
-                flexWrap: "wrap",
+                alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap",
               }}>
                 <div style={{
-                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
-                  textTransform: "uppercase", color: C.muted,
                   display: "flex", alignItems: "center", gap: "10px",
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  textTransform: "uppercase", color: C.dim,
                 }}>
-                  <div style={{ width: "3px", height: "14px", background: C.blue, borderRadius: "1px" }} />
-                  Performance Metrics
+                  <div style={{ width: "3px", height: "14px", background: C.navy, flexShrink: 0 }} />
+                  Performance Metrics · {selected}
                 </div>
                 <button
+                  className="ab-view-btn"
                   onClick={() => navigate(`/admin/branch/${encodeURIComponent(selected)}`)}
-                  style={{
-                    padding: "8px 20px",
-                    background: C.blue, border: "none", borderRadius: "3px",
-                    color: "#FFFFFF", fontSize: "10px", fontWeight: "700",
-                    letterSpacing: "0.12em", textTransform: "uppercase",
-                    cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseOver={e => e.currentTarget.style.opacity = "0.85"}
-                  onMouseOut={e => e.currentTarget.style.opacity = "1"}
                 >
                   View Technicians →
                 </button>
               </div>
 
-              {/* ── KPI Grid ── */}
-              <div style={{
+              {/* Stat grid */}
+              <div className="ab-a3 ab-stat-grid" style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: "8px", marginBottom: "28px",
+                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: "1px", background: C.border,
+                border: `1px solid ${C.border}`,
+                marginBottom: "24px",
               }}>
-                {STATS.map(({ key, label, unit, accent, fmt }) =>
+                {STATS.map(({ key, label, unit, accent }) =>
                   stats[key] !== undefined ? (
-                    <KpiCard key={key} label={label} value={fmt(stats[key])} unit={unit} accent={accent} />
+                    <StatCard key={key} label={label} value={fmtStat(key, stats[key])} unit={unit} accent={accent} />
                   ) : null
                 )}
               </div>
 
-              {/* ── Category breakdown ── */}
+              {/* Category breakdown */}
               {stats.categoryBreakdown?.length > 0 && (
-                <div style={{
-                  background: C.card, border: `1px solid ${C.border}`,
-                  borderRadius: "4px", padding: "24px",
+                <div className="ab-a4" style={{
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  padding: "24px",
                 }}>
                   <div style={{
                     display: "flex", alignItems: "center",
                     justifyContent: "space-between", marginBottom: "24px",
                   }}>
-                    <p style={{
-                      fontSize: "10px", fontWeight: "700",
-                      letterSpacing: "0.14em", textTransform: "uppercase",
-                      color: C.muted, margin: 0,
-                    }}>Category Breakdown</p>
-                    <p style={{ fontSize: "10px", color: C.dim, letterSpacing: "0.08em" }}>
+                    <div style={{
+                      fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
+                      textTransform: "uppercase", color: C.muted,
+                    }}>Category Breakdown</div>
+                    <div style={{
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontSize: "11px", color: C.dim, fontWeight: "600",
+                    }}>
                       {stats.categoryBreakdown.reduce((a, c) => a + c.count, 0)} entries
-                    </p>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                     {stats.categoryBreakdown.map(({ _id, count }) => {
-                      const max       = stats.categoryBreakdown[0].count;
-                      const pct       = Math.round((count / max) * 100);
-                      const totalCount = stats.categoryBreakdown.reduce((a, c) => a + c.count, 0);
-                      const sharePct  = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
-                      const cat       = CAT[_id] || { bar: C.blue, label: C.blueL };
+                      const max      = stats.categoryBreakdown[0].count;
+                      const pct      = Math.round((count / max) * 100);
+                      const total    = stats.categoryBreakdown.reduce((a, c) => a + c.count, 0);
+                      const sharePct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+                      const cat      = CAT[_id] || { bar: C.navy, text: C.navy };
+
                       return (
                         <div key={_id}>
                           <div style={{
                             display: "flex", justifyContent: "space-between",
-                            alignItems: "center", marginBottom: "8px",
+                            alignItems: "center", marginBottom: "9px",
                           }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                               <div style={{
-                                width: "8px", height: "8px", borderRadius: "2px",
-                                background: cat.bar, flexShrink: 0,
+                                width: "8px", height: "8px", flexShrink: 0,
+                                background: cat.bar,
                               }} />
-                              <span style={{ fontSize: "13px", color: "#B0B0CC", fontWeight: "500" }}>
-                                {_id}
-                              </span>
+                              <span style={{
+                                fontSize: "13px", color: C.mid, fontWeight: "500",
+                                fontFamily: "'IBM Plex Sans', sans-serif",
+                              }}>{_id}</span>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
                               <span style={{ fontSize: "11px", color: C.muted }}>{sharePct}%</span>
                               <span style={{
-                                fontSize: "14px", fontWeight: "700", color: cat.label,
                                 fontFamily: "'IBM Plex Mono', monospace",
+                                fontSize: "14px", fontWeight: "700", color: cat.text,
                                 minWidth: "28px", textAlign: "right",
                               }}>{count}</span>
                             </div>
                           </div>
-                          <div style={{
-                            height: "3px", background: C.border2,
-                            borderRadius: "2px", overflow: "hidden",
-                          }}>
+                          <div style={{ height: "4px", background: "#EEF2F7", overflow: "hidden" }}>
                             <div style={{
                               width: `${pct}%`, height: "100%",
-                              background: cat.bar, borderRadius: "2px",
+                              background: cat.bar,
                               transition: "width 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
                             }} />
                           </div>
