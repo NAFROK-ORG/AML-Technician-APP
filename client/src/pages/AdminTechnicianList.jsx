@@ -3,21 +3,94 @@ import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
 
+/* ─── Corporate light tokens ──────────────────────────────────────── */
 const C = {
-  bg:     "#09090E", surface: "#111119", card: "#16161F",
-  border: "#23232F", border2: "#1A1A25",
-  text:   "#E2E2EE", muted:   "#60607A", dim:  "#30304A",
-  blue:   "#4C70F5", blueL:  "#7A98F8",
-  green:  "#10C090", greenL: "#4DD8B6",
-  amber:  "#E8A000",
-  red:    "#E04848",
+  pageBg:  "#EEF2F7",
+  card:    "#FFFFFF",
+  cardAlt: "#F8FAFC",
+  border:  "#DDE3EE",
+  borderL: "#F1F5F9",
+  navy:    "#1E3A8A",
+  navyHov: "#1E40AF",
+  ink:     "#0A1628",
+  mid:     "#374151",
+  muted:   "#6B7A99",
+  dim:     "#94A3B8",
+  success: "#16A34A",
+  danger:  "#DC2626",
+  amber:   "#D97706",
 };
 
-const RANK = [
-  { label: "#1", color: "#E8A000" },
-  { label: "#2", color: "#888898" },
-  { label: "#3", color: "#C07040" },
-];
+const RANK_COLORS = ["#B45309", "#6B7A99", "#92400E"];
+
+const INJECTED = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+  @keyframes alFadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .al-a1 { animation: alFadeUp 0.28s ease both 0.00s; }
+  .al-a2 { animation: alFadeUp 0.28s ease both 0.06s; }
+  .al-a3 { animation: alFadeUp 0.28s ease both 0.10s; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .al-tech-card {
+    background: #FFFFFF;
+    border: 1px solid #DDE3EE;
+    border-left: 3px solid transparent;
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .al-tech-card:hover {
+    border-left-color: #1E3A8A;
+    box-shadow: 0 2px 8px rgba(30,58,138,0.08);
+  }
+
+  .al-search-wrap {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .al-search-icon {
+    position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 15px; color: #94A3B8; pointer-events: none;
+  }
+  .al-search-input {
+    width: 100%; box-sizing: border-box;
+    background: #FFFFFF; border: 1px solid #DDE3EE; border-radius: 0;
+    color: #0A1628; font-size: 14px;
+    padding: 12px 40px 12px 38px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none; height: 48px;
+    transition: border-color 0.15s;
+  }
+  .al-search-input:focus { border-color: #1E3A8A; border-width: 1.5px; }
+  .al-search-clear {
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none; color: #94A3B8;
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .al-back-btn {
+    background: transparent; border: none; color: #94A3B8;
+    font-size: 10px; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 6px;
+    transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .al-back-btn:hover { color: #1E3A8A; }
+
+  @media (max-width: 480px) {
+    .al-tech-stats { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+`;
 
 export default function AdminTechnicianList() {
   const { branch } = useParams();
@@ -25,22 +98,26 @@ export default function AdminTechnicianList() {
 
   const [technicians, setTechnicians] = useState([]);
   const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState("");   // ← handles 403 + other errors
+  const [error,       setError]       = useState("");
   const [search,      setSearch]      = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
+    const id = "al-styles";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id; el.textContent = INJECTED;
+      document.head.appendChild(el);
+    }
+    return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
+  }, []);
+
+  useEffect(() => {
+    setLoading(true); setError("");
     api.get(`/api/admin/branch/${encodeURIComponent(branch)}/technicians`)
       .then(r => setTechnicians(r.data))
       .catch(err => {
-        /**
-         * 403 means a branch admin tried to access a branch that is not theirs.
-         * This can happen if they manually edit the URL. Show a clear message
-         * instead of a silent empty list.
-         */
         if (err.response?.status === 403) {
-          setError("Access denied: This branch is not assigned to your account. Please contact your developer.");
+          setError("Access denied: This branch is not assigned to your account.");
         } else {
           setError("Failed to load technicians. Please try again.");
         }
@@ -60,142 +137,128 @@ export default function AdminTechnicianList() {
 
   return (
     <div style={{
-      minHeight: "100dvh", background: C.bg,
-      fontFamily: "'IBM Plex Sans', sans-serif", color: C.text,
+      minHeight: "100dvh", background: C.pageBg,
+      fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+      WebkitFontSmoothing: "antialiased",
     }}>
       <Navbar />
 
-      <div style={{ padding: "20px 16px 64px", maxWidth: "600px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "680px", margin: "0 auto", padding: "24px 16px 64px" }}>
 
         {/* ── Header ── */}
-        <div style={{ marginBottom: "24px" }}>
-          <button
-            onClick={() => navigate("/admin")}
-            style={{
-              background: "transparent", border: "none",
-              color: C.dim, fontSize: "11px", cursor: "pointer",
-              fontFamily: "'IBM Plex Sans', sans-serif",
-              letterSpacing: "0.10em", textTransform: "uppercase",
-              padding: "0", marginBottom: "16px",
-              display: "flex", alignItems: "center", gap: "6px",
-              WebkitTapHighlightColor: "transparent",
-            }}
-          >
+        <div className="al-a1">
+          <button className="al-back-btn" onClick={() => navigate("/admin")}>
             ← Branches
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-            <h1 style={{
-              fontSize: "30px", fontWeight: "800", margin: 0,
-              fontFamily: "'Barlow Condensed', sans-serif",
-              letterSpacing: "0.05em", textTransform: "uppercase", color: "#FFFFFF",
-            }}>{branch}</h1>
+          <div style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            flexWrap: "wrap", marginBottom: "24px",
+            paddingBottom: "20px", borderBottom: `1px solid ${C.border}`,
+          }}>
+            <div>
+              <div style={{
+                fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
+                textTransform: "uppercase", color: C.navy, marginBottom: "4px",
+              }}>Branch</div>
+              <h1 style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "36px", fontWeight: "700", color: C.ink,
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                margin: 0, lineHeight: 1,
+              }}>{branch}</h1>
+            </div>
             {!loading && !error && (
-              <span style={{
-                fontSize: "10px", fontWeight: "700", color: C.muted,
-                letterSpacing: "0.14em", textTransform: "uppercase",
-                background: C.card, border: `1px solid ${C.border}`,
-                borderRadius: "4px", padding: "3px 8px",
+              <div style={{
+                marginLeft: "auto",
+                background: C.cardAlt, border: `1px solid ${C.border}`,
+                padding: "8px 14px",
+                display: "flex", flexDirection: "column", alignItems: "flex-end",
               }}>
-                {technicians.length} Technician{technicians.length !== 1 ? "s" : ""}
-              </span>
+                <div style={{
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: "22px", fontWeight: "700", color: C.ink, lineHeight: 1,
+                }}>{technicians.length}</div>
+                <div style={{
+                  fontSize: "8px", fontWeight: "700", letterSpacing: "0.16em",
+                  textTransform: "uppercase", color: C.dim, marginTop: "2px",
+                }}>Technicians</div>
+              </div>
             )}
           </div>
         </div>
 
         {/* ── Search ── */}
         {!loading && !error && technicians.length > 2 && (
-          <div style={{ marginBottom: "20px", position: "relative" }}>
-            <span style={{
-              position: "absolute", left: "13px", top: "50%",
-              transform: "translateY(-50%)",
-              fontSize: "14px", color: C.dim, pointerEvents: "none",
-            }}>⌕</span>
+          <div className="al-a2 al-search-wrap">
+            <span className="al-search-icon">⌕</span>
             <input
-              type="text" value={search}
+              type="text"
+              className="al-search-input"
+              value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search name, ID…"
-              style={{
-                width: "100%", boxSizing: "border-box",
-                background: C.card, border: `1px solid ${C.border}`,
-                borderRadius: "8px", color: C.text, fontSize: "14px",
-                padding: "12px 40px 12px 36px",
-                fontFamily: "'IBM Plex Sans', sans-serif", outline: "none", height: "46px",
-              }}
-              onFocus={e => e.target.style.borderColor = C.blue}
-              onBlur={e => e.target.style.borderColor = C.border}
+              placeholder="Search by name, ID, or email…"
             />
             {search && (
-              <button
-                onClick={() => setSearch("")}
-                style={{
-                  position: "absolute", right: "12px", top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none", border: "none",
-                  color: C.muted, cursor: "pointer", fontSize: "18px",
-                  lineHeight: 1, padding: "0", WebkitTapHighlightColor: "transparent",
-                }}
-              >×</button>
+              <button className="al-search-clear" onClick={() => setSearch("")}>×</button>
             )}
           </div>
         )}
 
         {/* ── States ── */}
         {loading ? (
-          <div style={{ textAlign: "center", padding: "80px 0", color: C.dim }}>
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{
               width: "24px", height: "24px",
-              border: `2px solid ${C.border}`, borderTop: `2px solid ${C.blue}`,
+              border: `2px solid ${C.border}`, borderTop: `2px solid ${C.navy}`,
               borderRadius: "50%", margin: "0 auto 16px",
               animation: "spin 0.8s linear infinite",
             }} />
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-            <p style={{ fontSize: "11px", letterSpacing: "0.14em", textTransform: "uppercase" }}>
-              Loading…
-            </p>
+            <p style={{
+              fontSize: "10px", letterSpacing: "0.18em", textTransform: "uppercase",
+              fontWeight: "700", color: C.dim,
+            }}>Loading…</p>
           </div>
 
         ) : error ? (
-          /**
-           * Error state — shown for 403 (branch mismatch) and other failures.
-           * The message is already specific from the catch block above.
-           */
           <div style={{
-            background: "rgba(224,72,72,0.06)", border: `1px solid rgba(224,72,72,0.25)`,
-            borderRadius: "4px", padding: "32px 24px", textAlign: "center",
+            background: "#FEF2F2", border: "1px solid #FECACA",
+            borderLeft: "3px solid #DC2626",
+            padding: "24px",
           }}>
-            <div style={{ fontSize: "28px", marginBottom: "12px" }}>🔒</div>
-            <p style={{ fontSize: "14px", color: C.red, fontWeight: "600", marginBottom: "8px" }}>
-              Access Denied
-            </p>
-            <p style={{ fontSize: "12px", color: C.muted, lineHeight: 1.6 }}>
+            <div style={{ fontSize: "24px", marginBottom: "10px" }}>🔒</div>
+            <p style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "18px", fontWeight: "700", color: C.danger,
+              letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "8px",
+            }}>Access Denied</p>
+            <p style={{ fontSize: "13px", color: "#991B1B", lineHeight: 1.6, fontWeight: "400" }}>
               {error}
             </p>
             <button
               onClick={() => navigate("/admin")}
               style={{
-                marginTop: "20px", padding: "8px 20px",
+                marginTop: "16px", padding: "10px 20px",
                 background: "transparent", border: `1px solid ${C.border}`,
-                borderRadius: "3px", color: C.muted,
-                fontSize: "11px", fontWeight: "600", letterSpacing: "0.10em",
+                borderRadius: "0", color: C.muted,
+                fontSize: "10px", fontWeight: "700", letterSpacing: "0.14em",
                 textTransform: "uppercase", cursor: "pointer",
                 fontFamily: "'IBM Plex Sans', sans-serif",
               }}
-            >
-              ← Back to Dashboard
-            </button>
+            >← Back to Dashboard</button>
           </div>
 
         ) : technicians.length === 0 ? (
           <div style={{
             background: C.card, border: `1px solid ${C.border}`,
-            borderRadius: "12px", padding: "48px 20px", textAlign: "center",
+            padding: "56px 20px", textAlign: "center",
           }}>
-            <div style={{ fontSize: "32px", marginBottom: "12px" }}>👷</div>
-            <p style={{ fontSize: "14px", color: C.muted, fontWeight: "600" }}>
-              No technicians yet
-            </p>
-            <p style={{ fontSize: "12px", color: C.dim, marginTop: "6px" }}>
+            <div style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: "20px", fontWeight: "700", letterSpacing: "0.08em",
+              textTransform: "uppercase", color: C.dim, marginBottom: "6px",
+            }}>No Technicians Yet</div>
+            <p style={{ color: C.dim, fontSize: "13px", fontWeight: "400", margin: 0 }}>
               Technicians must complete profile setup to appear here.
             </p>
           </div>
@@ -203,95 +266,82 @@ export default function AdminTechnicianList() {
         ) : filtered.length === 0 ? (
           <div style={{
             background: C.card, border: `1px solid ${C.border}`,
-            borderRadius: "12px", padding: "40px 20px", textAlign: "center",
+            padding: "40px 20px", textAlign: "center",
           }}>
             <p style={{ fontSize: "13px", color: C.muted }}>No match for "{search}"</p>
           </div>
 
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div className="al-a3" style={{ display: "flex", flexDirection: "column", gap: "1px", background: C.border, border: `1px solid ${C.border}` }}>
             {filtered.map(tech => {
               const ri = rankOf(tech);
-              const r  = ri <= 2 ? RANK[ri] : null;
+              const rankColor = ri <= 2 ? RANK_COLORS[ri] : null;
 
               return (
                 <div
                   key={tech.id}
+                  className="al-tech-card"
                   onClick={() => navigate(`/admin/technician/${tech.id}`)}
-                  style={{
-                    background: C.card, border: `1px solid ${C.border}`,
-                    borderRadius: "12px", padding: "16px",
-                    cursor: "pointer", WebkitTapHighlightColor: "transparent",
-                    transition: "border-color 0.15s, background 0.15s",
-                    touchAction: "manipulation",
-                  }}
-                  onTouchStart={e => {
-                    e.currentTarget.style.background    = "rgba(76,112,245,0.06)";
-                    e.currentTarget.style.borderColor   = C.blue;
-                  }}
-                  onTouchEnd={e => {
-                    e.currentTarget.style.background    = C.card;
-                    e.currentTarget.style.borderColor   = C.border;
-                  }}
-                  onMouseOver={e => {
-                    e.currentTarget.style.borderColor   = C.blue;
-                    e.currentTarget.style.background    = "rgba(76,112,245,0.04)";
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.borderColor   = C.border;
-                    e.currentTarget.style.background    = C.card;
-                  }}
                 >
                   {/* Top row */}
                   <div style={{
                     display: "flex", justifyContent: "space-between",
-                    alignItems: "flex-start", marginBottom: "14px",
+                    alignItems: "flex-start", marginBottom: "16px",
                   }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                        {rankColor && (
+                          <span style={{
+                            fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
+                            color: rankColor,
+                            background: `${rankColor}18`,
+                            border: `1px solid ${rankColor}50`,
+                            padding: "2px 6px",
+                          }}>#{ri + 1}</span>
+                        )}
                         <span style={{
-                          fontSize: "18px", fontWeight: "700", color: "#FFFFFF",
-                          fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.04em",
+                          fontFamily: "'Barlow Condensed', sans-serif",
+                          fontSize: "22px", fontWeight: "700", color: C.ink,
+                          letterSpacing: "0.03em", lineHeight: 1,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>{tech.name}</span>
-                        {r && (
-                          <span style={{
-                            fontSize: "9px", fontWeight: "800", letterSpacing: "0.12em",
-                            color: r.color, background: `${r.color}18`,
-                            border: `1px solid ${r.color}40`, borderRadius: "3px",
-                            padding: "2px 5px", flexShrink: 0,
-                          }}>{r.label}</span>
-                        )}
                       </div>
                       <span style={{
-                        fontSize: "11px", color: C.blue,
-                        fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.08em",
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: "11px", color: C.navy,
+                        fontWeight: "600", letterSpacing: "0.08em",
+                        display: "block", marginBottom: "2px",
                       }}>{tech.technicianId}</span>
+                      <span style={{ fontSize: "11px", color: C.dim }}>{tech.email}</span>
                     </div>
                     <span style={{
-                      color: C.dim, fontSize: "18px",
-                      marginLeft: "12px", flexShrink: 0, lineHeight: 1, marginTop: "2px",
+                      color: C.dim, fontSize: "20px", marginLeft: "12px",
+                      flexShrink: 0, lineHeight: 1, marginTop: "4px",
                     }}>›</span>
                   </div>
 
                   {/* Stats row */}
-                  <div style={{
-                    display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "8px", paddingTop: "12px", borderTop: `1px solid ${C.border2}`,
+                  <div className="al-tech-stats" style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "1px", background: C.border,
+                    border: `1px solid ${C.border}`,
                   }}>
                     {[
-                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",             color: C.text   },
-                      { label: "Hours",   value: tech.totalHours?.toLocaleString("en-IN")   ?? "0",             color: C.greenL },
-                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`,   color: C.amber  },
+                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",           color: C.ink   },
+                      { label: "Hours",   value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",  color: C.success },
+                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber  },
                     ].map(({ label, value, color }) => (
-                      <div key={label} style={{ textAlign: "center" }}>
+                      <div key={label} style={{
+                        background: C.cardAlt, padding: "10px 8px", textAlign: "center",
+                      }}>
                         <div style={{
-                          fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
-                          textTransform: "uppercase", color: C.dim, marginBottom: "4px",
+                          fontSize: "8px", fontWeight: "700", letterSpacing: "0.14em",
+                          textTransform: "uppercase", color: C.dim, marginBottom: "5px",
                         }}>{label}</div>
                         <div style={{
-                          fontSize: "15px", fontWeight: "700", color,
-                          fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.02em",
+                          fontFamily: "'Barlow Condensed', sans-serif",
+                          fontSize: "18px", fontWeight: "700", color, letterSpacing: "0.02em",
                         }}>{value}</div>
                       </div>
                     ))}
@@ -305,10 +355,11 @@ export default function AdminTechnicianList() {
         {/* Footer count */}
         {!loading && !error && filtered.length > 0 && search && (
           <p style={{
-            fontSize: "11px", color: C.dim, marginTop: "14px",
-            letterSpacing: "0.08em", textAlign: "right",
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: "11px", color: C.dim, marginTop: "12px",
+            letterSpacing: "0.06em", textAlign: "right",
           }}>
-            {filtered.length} of {technicians.length} technicians
+            {filtered.length} / {technicians.length} technicians
           </p>
         )}
       </div>
