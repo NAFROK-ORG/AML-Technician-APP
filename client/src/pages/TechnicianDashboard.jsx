@@ -6,7 +6,13 @@ import EntryTable from "../components/EntryTable";
 import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
 import TechnicianTypeModal from "../components/TechnicianTypeModal";
-// ─── Helpers ────────────────────────────────────────────────────────────────
+
+// ─── Stable month reference (page-load time) ─────────────────────────────────
+// Defined outside the component so it never changes between renders.
+// Stats will reflect the month the page was loaded. Refresh resets naturally.
+const NOW = new Date();
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const fmtMoney = (n) => {
   if (n === 0) return "₹0";
@@ -26,7 +32,7 @@ const SLABS = [
   { slab: 3, minHours: 150, minLabour: 72500,  incentive: 5000 },
 ];
 
-// ─── Injected styles ─────────────────────────────────────────────────────────
+// ─── Injected styles ──────────────────────────────────────────────────────────
 
 const DASHBOARD_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
@@ -43,7 +49,6 @@ const DASHBOARD_STYLES = `
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Staggered fade-up children */
   .td-a1 { animation: tdFadeUp 0.32s ease both 0.00s; }
   .td-a2 { animation: tdFadeUp 0.32s ease both 0.06s; }
   .td-a3 { animation: tdFadeUp 0.32s ease both 0.10s; }
@@ -145,7 +150,40 @@ const DASHBOARD_STYLES = `
     color: #94A3B8;
   }
 
-  /* ── New Entry button (full-width, between stats and incentive) ── */
+  /* ── Month context banner ── */
+  .td-month-banner {
+    background: #F8FAFC;
+    border-left: 1px solid #DDE3EE;
+    border-right: 1px solid #DDE3EE;
+    border-bottom: 1px solid #EEF2F7;
+    padding: 7px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .td-month-banner-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #1E3A8A;
+    flex-shrink: 0;
+  }
+  .td-month-banner-text {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #6B7A99;
+  }
+  .td-month-banner-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: #1E3A8A;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── New Entry button ── */
   .td-new-entry-btn {
     width: 100%;
     height: 60px;
@@ -301,7 +339,6 @@ const DASHBOARD_STYLES = `
   /* ── Incentive body ── */
   .td-incentive-body { padding: 20px; }
 
-  /* Totals strip */
   .td-totals-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -329,7 +366,6 @@ const DASHBOARD_STYLES = `
     font-weight: 700;
   }
 
-  /* Progress bars */
   .td-threshold-block { margin-bottom: 16px; }
   .td-threshold-meta {
     display: flex;
@@ -398,7 +434,6 @@ const DASHBOARD_STYLES = `
     font-family: 'IBM Plex Sans', sans-serif;
   }
 
-  /* Slab badge */
   .td-slab-row {
     display: flex;
     align-items: center;
@@ -430,7 +465,6 @@ const DASHBOARD_STYLES = `
     font-weight: 400;
   }
 
-  /* Breakdown */
   .td-breakdown {
     background: #F8FAFC;
     border: 1px solid #E2E8F0;
@@ -461,7 +495,6 @@ const DASHBOARD_STYLES = `
     color: #CBD5E1;
   }
 
-  /* Final incentive */
   .td-final-row {
     display: flex;
     justify-content: space-between;
@@ -556,7 +589,7 @@ const DASHBOARD_STYLES = `
   }
 `;
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatCard({ label, value, unit, accent, accentCard }) {
   return (
@@ -604,18 +637,16 @@ function ThresholdBar({ label, current, target, met, formatValue }) {
 // ─── Incentive Dropdown ───────────────────────────────────────────────────────
 
 function IncentiveDropdown() {
-  const now = new Date();
-
   const [open,       setOpen]       = useState(false);
-  const [year,       setYear]       = useState(now.getFullYear());
-  const [month,      setMonth]      = useState(now.getMonth() + 1);
+  const [year,       setYear]       = useState(NOW.getFullYear());
+  const [month,      setMonth]      = useState(NOW.getMonth() + 1);
   const [data,       setData]       = useState(null);
   const [loading,    setLoading]    = useState(false);
   const [fetchError, setFetchError] = useState("");
 
   const isCurrentMonth =
-    year  === now.getFullYear() &&
-    month === now.getMonth() + 1;
+    year  === NOW.getFullYear() &&
+    month === NOW.getMonth() + 1;
 
   const fetchIncentive = useCallback(async () => {
     setLoading(true);
@@ -647,8 +678,8 @@ function IncentiveDropdown() {
   };
 
   const resetToCurrent = () => {
-    setYear(now.getFullYear());
-    setMonth(now.getMonth() + 1);
+    setYear(NOW.getFullYear());
+    setMonth(NOW.getMonth() + 1);
   };
 
   const hoursMet       = data ? data.totalHours  > 100   : false;
@@ -660,7 +691,6 @@ function IncentiveDropdown() {
   return (
     <div className="td-section" style={{ marginTop: 16 }}>
 
-      {/* Toggle header */}
       <button
         className="td-incentive-toggle"
         onClick={() => setOpen((o) => !o)}
@@ -672,10 +702,8 @@ function IncentiveDropdown() {
         <div className={`td-chevron${open ? " open" : ""}`}>›</div>
       </button>
 
-      {/* Expandable body */}
       {open && (
         <>
-          {/* Month picker */}
           <div className="td-month-strip">
             {!isCurrentMonth && (
               <button className="td-month-now-pill" onClick={resetToCurrent}>
@@ -698,7 +726,6 @@ function IncentiveDropdown() {
             >›</button>
           </div>
 
-          {/* Body states */}
           {loading ? (
             <div className="td-incent-placeholder">
               <p className="td-incent-placeholder-text">Loading…</p>
@@ -718,12 +745,11 @@ function IncentiveDropdown() {
           ) : data && (
             <div className="td-incentive-body">
 
-              {/* Totals strip */}
               <div className="td-totals-grid">
                 {[
-                  { label: "Hours",  value: `${data.totalHours}h`,            color: hoursMet  ? "#16A34A" : "#0A1628" },
-                  { label: "Labour", value: fmtMoney(data.totalLabour),        color: labourMet ? "#16A34A" : "#0A1628" },
-                  { label: "Leave",  value: `${data.totalLeave}d`,             color: "#0A1628" },
+                  { label: "Hours",  value: `${data.totalHours}h`,     color: hoursMet  ? "#16A34A" : "#0A1628" },
+                  { label: "Labour", value: fmtMoney(data.totalLabour), color: labourMet ? "#16A34A" : "#0A1628" },
+                  { label: "Leave",  value: `${data.totalLeave}d`,      color: "#0A1628" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="td-total-cell">
                     <div className="td-total-cell-label">{label}</div>
@@ -732,7 +758,6 @@ function IncentiveDropdown() {
                 ))}
               </div>
 
-              {/* Progress toward next slab */}
               <div style={{ marginBottom: "20px" }}>
                 <div style={{
                   fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
@@ -763,7 +788,6 @@ function IncentiveDropdown() {
                 )}
               </div>
 
-              {/* Slab badge */}
               <div className="td-slab-row">
                 <div className={`td-slab-badge ${bothMet && currentSlabNum > 0 ? "achieved" : "none"}`}>
                   {currentSlabNum > 0 ? `Slab ${currentSlabNum}` : "No Slab"}
@@ -775,27 +799,26 @@ function IncentiveDropdown() {
                 </div>
               </div>
 
-              {/* Breakdown table */}
               <div className="td-breakdown">
                 {[
                   {
-                    label: "Base Incentive",
-                    value: data.baseIncentive > 0 ? `₹${data.baseIncentive.toLocaleString()}` : "₹0",
+                    label:  "Base Incentive",
+                    value:  data.baseIncentive > 0 ? `₹${data.baseIncentive.toLocaleString()}` : "₹0",
                     dimmed: data.baseIncentive === 0,
                   },
                   {
-                    label: `Leave Multiplier (${data.leaveTier ?? "—"})`,
-                    value: `${Math.round(data.leaveMultiplier * 100)}%`,
+                    label:  `Leave Multiplier (${data.leaveTier ?? "—"})`,
+                    value:  `${Math.round(data.leaveMultiplier * 100)}%`,
                     dimmed: data.leaveMultiplier === 0,
                   },
                   {
-                    label: "No-Leave Bonus",
-                    value: data.noLeaveBonus > 0 ? `+₹${data.noLeaveBonus.toLocaleString()}` : "—",
+                    label:  "No-Leave Bonus",
+                    value:  data.noLeaveBonus > 0 ? `+₹${data.noLeaveBonus.toLocaleString()}` : "—",
                     dimmed: data.noLeaveBonus === 0,
                   },
                   ...(data.isCapped ? [{
-                    label: "Cap Applied",
-                    value: "₹10,000 max",
+                    label:  "Cap Applied",
+                    value:  "₹10,000 max",
                     dimmed: false,
                   }] : []),
                 ].map(({ label, value, dimmed }) => (
@@ -806,7 +829,6 @@ function IncentiveDropdown() {
                 ))}
               </div>
 
-              {/* Final amount */}
               <div className="td-final-row">
                 <span
                   className="td-final-label"
@@ -874,9 +896,8 @@ export default function TechnicianDashboard() {
 
   const fetchCurrentIncentive = useCallback(async () => {
     try {
-      const d = new Date();
       const res = await api.get(
-        `/api/entries/my/incentive?year=${d.getFullYear()}&month=${d.getMonth() + 1}`
+        `/api/entries/my/incentive?year=${NOW.getFullYear()}&month=${NOW.getMonth() + 1}`
       );
       setCurrentIncentive(res.data?.finalIncentive ?? 0);
     } catch (err) {
@@ -884,7 +905,7 @@ export default function TechnicianDashboard() {
     }
   }, []);
 
-  useEffect(() => { fetchEntries(); },         [fetchEntries]);
+  useEffect(() => { fetchEntries(); },          [fetchEntries]);
   useEffect(() => { fetchCurrentIncentive(); }, [fetchCurrentIncentive]);
 
   const handleSaved = useCallback(() => {
@@ -892,17 +913,32 @@ export default function TechnicianDashboard() {
     fetchCurrentIncentive();
   }, [fetchEntries, fetchCurrentIncentive]);
 
-  const totalHours    = entries.reduce((s, e) => s + (e.hoursWorked  || 0), 0);
-  const totalLabour   = entries.reduce((s, e) => s + (e.labourAmount || 0), 0);
-  const totalLeave    = entries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
-  const totalVehicles = new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size;
- const needsProfile = user?.role === "technician" && !user?.profileComplete;
-// Catches null (post-migration, re-logged) AND undefined (old JWT, not yet re-logged)
-const needsType    = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
+  // ── This-month filter ─────────────────────────────────────────────────────
+  // Slices the full entries array to the current calendar month only.
+  // Stats on the dashboard reflect this month. Entry table below still shows all.
+  const thisMonthEntries = entries.filter((e) => {
+    const d = new Date(e.date);
+    return (
+      d.getFullYear() === NOW.getFullYear() &&
+      d.getMonth()    === NOW.getMonth()
+    );
+  });
+
+  const totalHours    = thisMonthEntries.reduce((s, e) => s + (e.hoursWorked  || 0), 0);
+  const totalLabour   = thisMonthEntries.reduce((s, e) => s + (e.labourAmount || 0), 0);
+  const totalLeave    = thisMonthEntries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
+  const totalVehicles = new Set(thisMonthEntries.map((e) => e.vehicleNo).filter(Boolean)).size;
+
+  const needsProfile = user?.role === "technician" && !user?.profileComplete;
+  const needsType    = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
+
   const incentiveDisplay =
     currentIncentive === null ? "—"  :
     currentIncentive === 0    ? "₹0" :
     fmtMoney(currentIncentive);
+
+  // Month label for the banner e.g. "June 2026"
+  const currentMonthLabel = `${MONTH_NAMES[NOW.getMonth()]} ${NOW.getFullYear()}`;
 
   return (
     <div className="td-page">
@@ -914,65 +950,70 @@ const needsType    = user?.role === "technician" && user?.profileComplete && !us
       <div className="td-page-header td-a1">
         <div className="td-eyebrow">Technician Dashboard</div>
         <h1 className="td-name">{user?.name?.split(" ")[0]}</h1>
-       {/* Header meta — add type badge */}
-<div className="td-meta">
-  {user?.technicianId && (
-    <span className="td-tech-id">{user.technicianId}</span>
-  )}
-  {user?.branch && (
-    <span className="td-branch-badge">{user.branch}</span>
-  )}
-  {/* NEW: show type badge once selected */}
-  {user?.technicianType && (
-    <span className="td-branch-badge" style={{ color: "#1E3A8A", borderColor: "#1E3A8A" }}>
-      {user.technicianType}
-    </span>
-  )}
-</div>
-
+        <div className="td-meta">
+          {user?.technicianId && (
+            <span className="td-tech-id">{user.technicianId}</span>
+          )}
+          {user?.branch && (
+            <span className="td-branch-badge">{user.branch}</span>
+          )}
+          {user?.technicianType && (
+            <span className="td-branch-badge" style={{ color: "#1E3A8A", borderColor: "#1E3A8A" }}>
+              {user.technicianType}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* ── Content ── */}
       <div style={{ padding: "0 0 100px", maxWidth: "600px", margin: "0 auto" }}>
 
-        {/* ── Stats grid (2 × 3) ── */}
+        {/* ── Stats grid ── */}
         <div className="td-stat-grid td-a2">
-          <StatCard label="Total Entries"   value={entries.length} />
-          <StatCard label="Hours Worked"    value={totalHours}     unit="hrs total" />
-          <StatCard label="Labour Earned"   value={fmtMoney(totalLabour)} />
-          <StatCard label="Leave Days"      value={totalLeave}     unit="days taken" />
-          <StatCard label="Vehicles Served" value={totalVehicles}  unit="unique" />
+          <StatCard label="Entries"          value={thisMonthEntries.length} />
+          <StatCard label="Hours Worked"     value={totalHours}              unit="hrs" />
+          <StatCard label="Labour Earned"    value={fmtMoney(totalLabour)} />
+          <StatCard label="Leave Days"       value={totalLeave}              unit="days" />
+          <StatCard label="Vehicles Served"  value={totalVehicles}           unit="unique" />
           <StatCard
-            label="This Month"
+            label="Projected Incentive"
             value={incentiveDisplay}
-            unit="projected"
+            unit="this month"
             accent={currentIncentive > 0 ? "#16A34A" : undefined}
             accentCard={currentIncentive > 0}
           />
         </div>
 
-        {/* ── NEW ENTRY — full width, between stats and incentive ── */}
-       {/* New Entry button — disable when type not set (modal is showing, but defense-in-depth) */}
-<button
-  className="td-new-entry-btn td-a3"
-  onClick={() => !needsType && setShowForm(true)}
-  disabled={needsType}
-  style={{ opacity: needsType ? 0.5 : undefined, cursor: needsType ? "not-allowed" : undefined }}
->
-  <span style={{ fontSize: "18px", lineHeight: 1 }}>+</span>
-  New Entry
-</button>
+        {/* ── Month context banner ── */}
+        <div className="td-month-banner td-a2">
+          <div className="td-month-banner-dot" />
+          <span className="td-month-banner-text">Showing stats for</span>
+          <span className="td-month-banner-value">{currentMonthLabel}</span>
+        </div>
 
+        {/* ── New Entry button ── */}
+        <button
+          className="td-new-entry-btn td-a3"
+          onClick={() => !needsType && setShowForm(true)}
+          disabled={needsType}
+          style={{
+            opacity: needsType ? 0.5 : undefined,
+            cursor:  needsType ? "not-allowed" : undefined,
+          }}
+        >
+          <span style={{ fontSize: "18px", lineHeight: 1 }}>+</span>
+          New Entry
+        </button>
 
         {/* ── Monthly Incentive dropdown ── */}
         <div className="td-a4">
           <IncentiveDropdown />
         </div>
 
-        {/* ── Work entries section ── */}
+        {/* ── Work entries section — full history ── */}
         <div className="td-section td-a5">
           <div className="td-section-header">
-            <span className="td-section-label">Work Entries</span>
+            <span className="td-section-label">All Work Entries</span>
             <span className="td-section-count">{entries.length} total</span>
           </div>
 
@@ -984,16 +1025,16 @@ const needsType    = user?.role === "technician" && user?.profileComplete && !us
         </div>
       </div>
 
-     {/* FAB — same guard */}
-<button
-  className="td-fab"
-  onClick={() => !needsType && setShowForm(true)}
-  disabled={needsType}
-  style={{ opacity: needsType ? 0.5 : undefined }}
-  aria-label="New Entry"
->
-  +
-</button>
+      {/* ── FAB ── */}
+      <button
+        className="td-fab"
+        onClick={() => !needsType && setShowForm(true)}
+        disabled={needsType}
+        style={{ opacity: needsType ? 0.5 : undefined }}
+        aria-label="New Entry"
+      >
+        +
+      </button>
 
       {showForm && (
         <EntryForm onClose={() => setShowForm(false)} onSaved={handleSaved} />
