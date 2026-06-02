@@ -1,46 +1,64 @@
 const mongoose = require("mongoose");
 
+// Shared constant — keeps User and Entry in sync without circular imports.
+// Also imported directly in controllers for validation.
+const TECHNICIAN_TYPES = [
+  "MECHANIC",
+  "MECHANIC HELPER",
+  "ELECTRICIAN",
+  "ELECTRICIAN HELPER",
+];
+
 const userSchema = new mongoose.Schema(
   {
     name: {
-      type: String,
+      type:     String,
       required: [true, "Name is required"],
-      trim: true,
+      trim:     true,
     },
     email: {
-      type: String,
-      required: [true, "Email is required"],
-      unique: true,
+      type:      String,
+      required:  [true, "Email is required"],
+      unique:    true,
       lowercase: true,
-      trim: true,
+      trim:      true,
     },
     password: {
-      type: String,
-      required: [true, "Password is required"],
+      type:      String,
+      required:  [true, "Password is required"],
       minlength: 6,
     },
     role: {
-      type: String,
-      // "superadmin" → all branches, set branch: "all" in MongoDB
-      // "admin"      → one branch only, set branch: "<BranchName>" in MongoDB
-      // "technician" → default, self-signup
-      enum: ["technician", "admin", "superadmin"],
+      type:    String,
+      enum:    ["technician", "admin", "superadmin"],
       default: "technician",
+      // "superadmin" → branch: "all", set by developer
+      // "admin"      → branch: "<BranchName>", set by developer
+      // "technician" → default on signup
     },
     technicianId: {
-      type: String,
+      type:    String,
       default: "",
     },
     branch: {
-      type: String,
+      type:    String,
       default: "",
-      // For superadmin: set to "all" in MongoDB
-      // For admin:      set to the exact branch string (e.g. "Chennai")
-      // For technician: filled via profile-setup modal
+      // technician: set via profile-setup modal
+      // admin:      set by developer (real branch name, never "all")
+      // superadmin: set by developer as "all" (sentinel, never used in queries)
     },
     profileComplete: {
-      type: Boolean,
+      type:    Boolean,
       default: false,
+    },
+    technicianType: {
+      type:    String,
+      // null is explicitly allowed — means "not yet selected"
+      // The frontend TechnicianTypeModal blocks all entry logging until this is set.
+      // The backend createEntry also rejects if this is null.
+      enum:    [null, ...TECHNICIAN_TYPES],
+      default: null,
+      // Only applies to role: "technician". Ignored for admin/superadmin.
     },
   },
   { timestamps: true }
