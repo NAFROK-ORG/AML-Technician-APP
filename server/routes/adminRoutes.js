@@ -10,6 +10,8 @@ const {
   deleteEntry,
   exportTechnicianData,
   getAnalytics,
+  editUser,    // ← NEW
+  deleteUser,  // ← NEW
 } = require("../controllers/adminController");
 
 const { protect }                          = require("../middleware/authMiddleware");
@@ -26,12 +28,11 @@ const { adminOrAbove, superAdminOnly, branchGuard } = require("../middleware/adm
 router.use(protect, adminOrAbove, branchGuard);
 
 // ── Superadmin only ──────────────────────────────────────────────────────────
-// Branch admins hitting this route will be blocked by superAdminOnly (403).
-router.get("/branches", superAdminOnly, getBranches);
+router.get   ("/branches",                       superAdminOnly, getBranches);
+router.put   ("/user/:userId",                   superAdminOnly, editUser);    // ← NEW
+router.delete("/user/:userId",                   superAdminOnly, deleteUser);  // ← NEW
 
 // ── Both admin + superadmin ──────────────────────────────────────────────────
-// Branch scoping is enforced INSIDE each controller function, not here.
-// The controller reads req.user.role and req.user.branch to decide what to query.
 router.get("/analytics",                        getAnalytics);
 router.get("/branch/:branch",                   getBranchDashboard);
 router.get("/branch/:branch/technicians",       getBranchTechnicians);
