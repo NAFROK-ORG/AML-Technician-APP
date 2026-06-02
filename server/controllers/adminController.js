@@ -414,6 +414,89 @@ const getAnalytics = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// PUT /api/admin/user/:userId  ← SUPERADMIN ONLY
+// Editable: name, technicianId, branch, technicianType
+// Never: email, password, role
+// ─────────────────────────────────────────────────────────────
+const editUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, technicianId, branch, technicianType } = req.body;
+
+    const VALID_TYPES = [
+      "MECHANIC", "MECHANIC HELPER", "ELECTRICIAN", "ELECTRICIAN HELPER",
+    ];
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Safety: only technician accounts can be edited here
+    if (user.role !== "technician") {
+      return res.status(403).json({
+        message: "Only technician accounts can be edited via this route.",
+      });
+    }
+
+    // Validate technicianType if a value is being set
+    if (technicianType && !VALID_TYPES.includes(technicianType)) {
+      return res.status(400).json({ message: "Invalid technician type." });
+    }
+
+    // Build update object — only include fields that were sent
+    const updates = {};
+    if (name          !== undefined) updates.name          = name.trim();
+    if (technicianId  !== undefined) updates.technicianId  = technicianId.trim();
+    if (branch        !== undefined) updates.branch        = branch.trim();
+    // technicianType can be explicitly set to null (clear it)
+    if (technicianType !== undefined) updates.technicianType = technicianType || null;
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true }).select("-password");
+
+    // If branch changed → cascade to all entries (entries carry a branch copy)
+    if (updates.branch && updates.branch !== user.branch) {
+      await Entry.updateMany({ userId }, { $set: { branch: updates.branch } });
+    }
+
+    // If technicianType changed → cascade to all entries
+    if ("technicianType" in updates && updates.technicianType !== user.technicianType) {
+      await Entry.updateMany({ userId }, { $set: { technicianType: updates.technicianType } });
+    }
+
+    res.json(updatedUser);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/admin/user/:userId  ← SUPERADMIN ONLY
+// Deletes the user account + all their job card entries (cascade)
+// ─────────────────────────────────────────────────────────────
+const deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Safety: only technician accounts can be deleted here
+    if (user.role !== "technician") {
+      return res.status(403).json({
+        message: "Only technician accounts can be deleted via this route.",
+      });
+    }
+
+    // Cascade: delete all entries first, then the user
+    await Entry.deleteMany({ userId });
+    await user.deleteOne();
+
+    res.json({ message: "Technician and all their entries have been deleted." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   getBranches,
   getBranchDashboard,
@@ -423,4 +506,6 @@ module.exports = {
   deleteEntry,
   exportTechnicianData,
   getAnalytics,
+  editUser,    // ← NEW
+  deleteUser,  // ← NEW
 };
