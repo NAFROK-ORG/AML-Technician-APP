@@ -110,15 +110,17 @@ const getBranchTechnicians = async (req, res) => {
             },
           },
         ]);
-        return {
-          id:           tech._id,
-          name:         tech.name,
-          technicianId: tech.technicianId,
-          email:        tech.email,
-          totalEntries: summary?.totalEntries || 0,
-          totalHours:   summary?.totalHours   || 0,
-          totalLabour:  summary?.totalLabour  || 0,
-        };
+// Inside getBranchTechnicians, in the result map — replace the return object:
+return {
+  id:             tech._id,
+  name:           tech.name,
+  technicianId:   tech.technicianId,
+  email:          tech.email,
+  technicianType: tech.technicianType || null,  // ← NEW
+  totalEntries:   summary?.totalEntries || 0,
+  totalHours:     summary?.totalHours   || 0,
+  totalLabour:    summary?.totalLabour  || 0,
+};
       })
     );
 
