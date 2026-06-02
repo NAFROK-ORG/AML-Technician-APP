@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
+import { TECHNICIAN_TYPES } from "../utils/constants";
 
-/* ─── Corporate light tokens ──────────────────────────────────────── */
 const C = {
   pageBg:  "#EEF2F7",
   card:    "#FFFFFF",
@@ -22,6 +22,16 @@ const C = {
 };
 
 const RANK_COLORS = ["#B45309", "#6B7A99", "#92400E"];
+
+// Badge color per type — consistent across admin UI
+const TYPE_STYLE = {
+  "MECHANIC":           { color: "#1E3A8A", bg: "#EEF2F7", border: "#BFDBFE" },
+  "MECHANIC HELPER":    { color: "#0369A1", bg: "#E0F2FE", border: "#BAE6FD" },
+  "ELECTRICIAN":        { color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" },
+  "ELECTRICIAN HELPER": { color: "#7C3AED", bg: "#EDE9FE", border: "#DDD6FE" },
+};
+
+const FILTER_OPTIONS = ["ALL", ...TECHNICIAN_TYPES, "PENDING"];
 
 const INJECTED = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
@@ -50,10 +60,7 @@ const INJECTED = `
     box-shadow: 0 2px 8px rgba(30,58,138,0.08);
   }
 
-  .al-search-wrap {
-    position: relative;
-    margin-bottom: 20px;
-  }
+  .al-search-wrap { position: relative; margin-bottom: 12px; }
   .al-search-icon {
     position: absolute; left: 14px; top: 50%;
     transform: translateY(-50%);
@@ -76,6 +83,35 @@ const INJECTED = `
     cursor: pointer; font-size: 18px; line-height: 1; padding: 0;
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* Type filter pills */
+  .al-filter-strip {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding-bottom: 4px; margin-bottom: 20px;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .al-filter-strip::-webkit-scrollbar { display: none; }
+  .al-filter-pill {
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border: 1.5px solid #DDE3EE;
+    background: #F8FAFC;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #6B7A99; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+  }
+  .al-filter-pill:hover { border-color: #1E3A8A; color: #1E3A8A; }
+  .al-filter-pill.active {
+    background: #1E3A8A; border-color: #1E3A8A;
+    color: #FFFFFF;
+  }
+  .al-filter-pill.pending-pill { border-color: #FDE68A; color: #D97706; background: #FEF3C7; }
+  .al-filter-pill.pending-pill.active { background: #D97706; border-color: #D97706; color: #FFFFFF; }
+
   .al-back-btn {
     background: transparent; border: none; color: #94A3B8;
     font-size: 10px; cursor: pointer;
@@ -100,6 +136,7 @@ export default function AdminTechnicianList() {
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState("");
   const [search,      setSearch]      = useState("");
+  const [typeFilter,  setTypeFilter]  = useState("ALL"); // ← NEW
 
   useEffect(() => {
     const id = "al-styles";
@@ -125,15 +162,29 @@ export default function AdminTechnicianList() {
       .finally(() => setLoading(false));
   }, [branch]);
 
-  const sorted   = [...technicians].sort((a, b) => b.totalLabour - a.totalLabour);
-  const rankOf   = (t) => sorted.findIndex(x => x.id === t.id);
+  const sorted = [...technicians].sort((a, b) => b.totalLabour - a.totalLabour);
+  const rankOf = (t) => sorted.findIndex(x => x.id === t.id);
 
-  const filtered = technicians.filter(t =>
+  // Apply search then type filter
+  const afterSearch = technicians.filter(t =>
     !search ||
     t.name?.toLowerCase().includes(search.toLowerCase()) ||
     t.technicianId?.toLowerCase().includes(search.toLowerCase()) ||
     t.email?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const filtered = afterSearch.filter(t => {
+    if (typeFilter === "ALL")     return true;
+    if (typeFilter === "PENDING") return !t.technicianType;
+    return t.technicianType === typeFilter;
+  });
+
+  // Count per type for pill badges
+  const countFor = (f) => {
+    if (f === "ALL")     return technicians.length;
+    if (f === "PENDING") return technicians.filter(t => !t.technicianType).length;
+    return technicians.filter(t => t.technicianType === f).length;
+  };
 
   return (
     <div style={{
@@ -145,12 +196,11 @@ export default function AdminTechnicianList() {
 
       <div style={{ maxWidth: "680px", margin: "0 auto", padding: "24px 16px 64px" }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="al-a1">
           <button className="al-back-btn" onClick={() => navigate("/admin")}>
             ← Branches
           </button>
-
           <div style={{
             display: "flex", alignItems: "center", gap: "12px",
             flexWrap: "wrap", marginBottom: "24px",
@@ -188,7 +238,7 @@ export default function AdminTechnicianList() {
           </div>
         </div>
 
-        {/* ── Search ── */}
+        {/* Search */}
         {!loading && !error && technicians.length > 2 && (
           <div className="al-a2 al-search-wrap">
             <span className="al-search-icon">⌕</span>
@@ -205,7 +255,26 @@ export default function AdminTechnicianList() {
           </div>
         )}
 
-        {/* ── States ── */}
+        {/* Type filter pills — NEW */}
+        {!loading && !error && technicians.length > 0 && (
+          <div className="al-filter-strip al-a2">
+            {FILTER_OPTIONS.map((f) => {
+              const count = countFor(f);
+              if (count === 0 && f !== "ALL") return null; // hide empty filters
+              return (
+                <button
+                  key={f}
+                  className={`al-filter-pill${f === "PENDING" ? " pending-pill" : ""}${typeFilter === f ? " active" : ""}`}
+                  onClick={() => setTypeFilter(f)}
+                >
+                  {f} <span style={{ opacity: 0.7, marginLeft: "3px" }}>({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* States */}
         {loading ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{
@@ -223,8 +292,7 @@ export default function AdminTechnicianList() {
         ) : error ? (
           <div style={{
             background: "#FEF2F2", border: "1px solid #FECACA",
-            borderLeft: "3px solid #DC2626",
-            padding: "24px",
+            borderLeft: "3px solid #DC2626", padding: "24px",
           }}>
             <div style={{ fontSize: "24px", marginBottom: "10px" }}>🔒</div>
             <p style={{
@@ -268,14 +336,20 @@ export default function AdminTechnicianList() {
             background: C.card, border: `1px solid ${C.border}`,
             padding: "40px 20px", textAlign: "center",
           }}>
-            <p style={{ fontSize: "13px", color: C.muted }}>No match for "{search}"</p>
+            <p style={{ fontSize: "13px", color: C.muted }}>
+              {search ? `No match for "${search}"` : `No technicians in this filter`}
+            </p>
           </div>
 
         ) : (
-          <div className="al-a3" style={{ display: "flex", flexDirection: "column", gap: "1px", background: C.border, border: `1px solid ${C.border}` }}>
+          <div className="al-a3" style={{
+            display: "flex", flexDirection: "column", gap: "1px",
+            background: C.border, border: `1px solid ${C.border}`,
+          }}>
             {filtered.map(tech => {
-              const ri = rankOf(tech);
+              const ri        = rankOf(tech);
               const rankColor = ri <= 2 ? RANK_COLORS[ri] : null;
+              const typeStyle = tech.technicianType ? TYPE_STYLE[tech.technicianType] : null;
 
               return (
                 <div
@@ -286,17 +360,16 @@ export default function AdminTechnicianList() {
                   {/* Top row */}
                   <div style={{
                     display: "flex", justifyContent: "space-between",
-                    alignItems: "flex-start", marginBottom: "16px",
+                    alignItems: "flex-start", marginBottom: "12px",
                   }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
+                      {/* Name + rank */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
                         {rankColor && (
                           <span style={{
                             fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
-                            color: rankColor,
-                            background: `${rankColor}18`,
-                            border: `1px solid ${rankColor}50`,
-                            padding: "2px 6px",
+                            color: rankColor, background: `${rankColor}18`,
+                            border: `1px solid ${rankColor}50`, padding: "2px 6px",
                           }}>#{ri + 1}</span>
                         )}
                         <span style={{
@@ -306,14 +379,42 @@ export default function AdminTechnicianList() {
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>{tech.name}</span>
                       </div>
+
+                      {/* Technician ID */}
                       <span style={{
                         fontFamily: "'IBM Plex Mono', monospace",
-                        fontSize: "11px", color: C.navy,
-                        fontWeight: "600", letterSpacing: "0.08em",
-                        display: "block", marginBottom: "2px",
+                        fontSize: "11px", color: C.navy, fontWeight: "600",
+                        letterSpacing: "0.08em", display: "block", marginBottom: "5px",
                       }}>{tech.technicianId}</span>
-                      <span style={{ fontSize: "11px", color: C.dim }}>{tech.email}</span>
+
+                      {/* Email + type badge on same row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11px", color: C.dim }}>{tech.email}</span>
+
+                        {/* Type badge — NEW */}
+                        {tech.technicianType ? (
+                          <span style={{
+                            fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
+                            textTransform: "uppercase", padding: "2px 7px",
+                            color:       typeStyle.color,
+                            background:  typeStyle.bg,
+                            border:      `1px solid ${typeStyle.border}`,
+                          }}>
+                            {tech.technicianType}
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
+                            textTransform: "uppercase", padding: "2px 7px",
+                            color: "#D97706", background: "#FEF3C7",
+                            border: "1px solid #FDE68A",
+                          }}>
+                            ⚠ PENDING TYPE
+                          </span>
+                        )}
+                      </div>
                     </div>
+
                     <span style={{
                       color: C.dim, fontSize: "20px", marginLeft: "12px",
                       flexShrink: 0, lineHeight: 1, marginTop: "4px",
@@ -322,15 +423,13 @@ export default function AdminTechnicianList() {
 
                   {/* Stats row */}
                   <div className="al-tech-stats" style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "1px", background: C.border,
-                    border: `1px solid ${C.border}`,
+                    display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "1px", background: C.border, border: `1px solid ${C.border}`,
                   }}>
                     {[
-                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",           color: C.ink   },
+                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",           color: C.ink    },
                       { label: "Hours",   value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",  color: C.success },
-                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber  },
+                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber   },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{
                         background: C.cardAlt, padding: "10px 8px", textAlign: "center",
@@ -353,7 +452,7 @@ export default function AdminTechnicianList() {
         )}
 
         {/* Footer count */}
-        {!loading && !error && filtered.length > 0 && search && (
+        {!loading && !error && filtered.length > 0 && (search || typeFilter !== "ALL") && (
           <p style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: "11px", color: C.dim, marginTop: "12px",
