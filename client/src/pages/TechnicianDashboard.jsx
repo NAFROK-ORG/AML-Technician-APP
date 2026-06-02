@@ -5,7 +5,7 @@ import EntryForm from "../components/EntryForm";
 import EntryTable from "../components/EntryTable";
 import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
-
+import TechnicianTypeModal from "../components/TechnicianTypeModal";
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const fmtMoney = (n) => {
@@ -896,8 +896,9 @@ export default function TechnicianDashboard() {
   const totalLabour   = entries.reduce((s, e) => s + (e.labourAmount || 0), 0);
   const totalLeave    = entries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
   const totalVehicles = new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size;
-  const needsProfile  = user?.role === "technician" && !user?.profileComplete;
-
+ const needsProfile = user?.role === "technician" && !user?.profileComplete;
+// Catches null (post-migration, re-logged) AND undefined (old JWT, not yet re-logged)
+const needsType    = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
   const incentiveDisplay =
     currentIncentive === null ? "—"  :
     currentIncentive === 0    ? "₹0" :
@@ -906,20 +907,29 @@ export default function TechnicianDashboard() {
   return (
     <div className="td-page">
       {needsProfile && <ProfileSetupModal />}
+      {needsType    && <TechnicianTypeModal />}
       <Navbar />
 
       {/* ── Page header ── */}
       <div className="td-page-header td-a1">
         <div className="td-eyebrow">Technician Dashboard</div>
         <h1 className="td-name">{user?.name?.split(" ")[0]}</h1>
-        <div className="td-meta">
-          {user?.technicianId && (
-            <span className="td-tech-id">{user.technicianId}</span>
-          )}
-          {user?.branch && (
-            <span className="td-branch-badge">{user.branch}</span>
-          )}
-        </div>
+       {/* Header meta — add type badge */}
+<div className="td-meta">
+  {user?.technicianId && (
+    <span className="td-tech-id">{user.technicianId}</span>
+  )}
+  {user?.branch && (
+    <span className="td-branch-badge">{user.branch}</span>
+  )}
+  {/* NEW: show type badge once selected */}
+  {user?.technicianType && (
+    <span className="td-branch-badge" style={{ color: "#1E3A8A", borderColor: "#1E3A8A" }}>
+      {user.technicianType}
+    </span>
+  )}
+</div>
+
       </div>
 
       {/* ── Content ── */}
@@ -942,13 +952,17 @@ export default function TechnicianDashboard() {
         </div>
 
         {/* ── NEW ENTRY — full width, between stats and incentive ── */}
-        <button
-          className="td-new-entry-btn td-a3"
-          onClick={() => setShowForm(true)}
-        >
-          <span style={{ fontSize: "18px", lineHeight: 1 }}>+</span>
-          New Entry
-        </button>
+       {/* New Entry button — disable when type not set (modal is showing, but defense-in-depth) */}
+<button
+  className="td-new-entry-btn td-a3"
+  onClick={() => !needsType && setShowForm(true)}
+  disabled={needsType}
+  style={{ opacity: needsType ? 0.5 : undefined, cursor: needsType ? "not-allowed" : undefined }}
+>
+  <span style={{ fontSize: "18px", lineHeight: 1 }}>+</span>
+  New Entry
+</button>
+
 
         {/* ── Monthly Incentive dropdown ── */}
         <div className="td-a4">
@@ -970,14 +984,16 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      {/* ── FAB (secondary / scroll shortcut) ── */}
-      <button
-        className="td-fab"
-        onClick={() => setShowForm(true)}
-        aria-label="New Entry"
-      >
-        +
-      </button>
+     {/* FAB — same guard */}
+<button
+  className="td-fab"
+  onClick={() => !needsType && setShowForm(true)}
+  disabled={needsType}
+  style={{ opacity: needsType ? 0.5 : undefined }}
+  aria-label="New Entry"
+>
+  +
+</button>
 
       {showForm && (
         <EntryForm onClose={() => setShowForm(false)} onSaved={handleSaved} />
