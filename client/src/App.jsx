@@ -10,6 +10,7 @@ import AdminBranchDashboard from "./pages/AdminBranchDashboard";
 import AdminTechnicianList from "./pages/AdminTechnicianList";
 import AdminTechnicianDetail from "./pages/AdminTechnicianDetail";
 import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminAttendance from "./pages/AdminAttendance"; // ← new
 
 /**
  * GuestRoute — blocks /login and /signup for already-authenticated users.
@@ -71,6 +72,8 @@ export default function App() {
               superadmin sees all branches with the pill selector.
             - AdminAnalytics: branch admin has no branch dropdown (forced server-side),
               superadmin has the full branch filter UI.
+            - AdminAttendance: same pattern — branch admin is locked to their branch,
+              superadmin gets a branch filter dropdown.
           The backend enforces all scoping — the frontend just adapts its UI.
         */}
         <Route
@@ -86,6 +89,14 @@ export default function App() {
           element={
             <ProtectedRoute role={["admin", "superadmin"]}>
               <AdminAnalytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/attendance"
+          element={
+            <ProtectedRoute role={["admin", "superadmin"]}>
+              <AdminAttendance />
             </ProtectedRoute>
           }
         />
