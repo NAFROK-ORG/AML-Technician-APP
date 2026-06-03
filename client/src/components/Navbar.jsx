@@ -4,8 +4,9 @@ import { useAuthStore } from "../store/authStore";
 
 /* ─── Admin nav items ──────────────────────────────────────────── */
 const ADMIN_NAV = [
-  { path: "/admin",           label: "Dashboard" },
-  { path: "/admin/analytics", label: "Analytics" },
+  { path: "/admin",             label: "Dashboard"  },
+  { path: "/admin/analytics",   label: "Analytics"  },
+  { path: "/admin/attendance",  label: "Attendance" }, // ← new
 ];
 
 /* ─── Injected styles ──────────────────────────────────────────── */
