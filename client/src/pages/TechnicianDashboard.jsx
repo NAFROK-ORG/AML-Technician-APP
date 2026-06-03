@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import Navbar from "../components/Navbar";
 import ProfileSetupModal from "../components/ProfileSetupModal";
 import EntryForm from "../components/EntryForm";
@@ -130,7 +130,7 @@ const DASHBOARD_STYLES = `
     justify-content: space-between;
     gap: 16px;
     border-left: 4px solid #CBD5E1;
-    transition: border-left-color 0.4s ease, background 0.4s ease;
+    transition: border-left-color 0.3s ease, background 0.3s ease;
   }
   .td-att-card.att-present {
     border-left-color: #16A34A;
@@ -169,7 +169,7 @@ const DASHBOARD_STYLES = `
     font-weight: 600;
   }
 
-  /* Toggle switch */
+  /* Toggle switch — GPU-accelerated via will-change */
   .td-toggle-btn {
     display: flex;
     flex-direction: column;
@@ -192,13 +192,18 @@ const DASHBOARD_STYLES = `
     background: #E2E8F0;
     border: 2px solid #CBD5E1;
     position: relative;
-    transition: background 0.28s ease, border-color 0.28s ease;
+    transition: background 0.2s ease, border-color 0.2s ease;
+    will-change: background, border-color;
   }
   .td-toggle-track.on {
     background: #16A34A;
     border-color: #15803D;
   }
-  .td-toggle-track.loading {
+  /* Subtle pulse while confirming with server — only visible for ~300ms */
+  .td-toggle-track.on.loading {
+    opacity: 0.82;
+  }
+  .td-toggle-track.loading:not(.on) {
     opacity: 0.55;
   }
   .td-toggle-knob {
@@ -210,7 +215,9 @@ const DASHBOARD_STYLES = `
     border-radius: 50%;
     background: #FFFFFF;
     box-shadow: 0 2px 6px rgba(0,0,0,0.22);
-    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    /* Snappier: 0.2s vs original 0.28s + GPU layer */
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
   }
   .td-toggle-track.on .td-toggle-knob {
     transform: translateX(30px);
@@ -221,7 +228,7 @@ const DASHBOARD_STYLES = `
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: #94A3B8;
-    transition: color 0.25s ease;
+    transition: color 0.2s ease;
   }
   .td-toggle-label.on { color: #16A34A; }
 
@@ -757,9 +764,24 @@ const DASHBOARD_STYLES = `
   }
 `;
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Module-level style injection ─────────────────────────────────────────────
+// Runs ONCE when the JS module loads — no FOUC, no re-injection on re-navigation.
+// This replaces the old useEffect approach which removed/re-added styles on mount/unmount.
+if (typeof document !== "undefined") {
+  const _styleId = "td-dashboard-styles";
+  if (!document.getElementById(_styleId)) {
+    const _el = document.createElement("style");
+    _el.id = _styleId;
+    _el.textContent = DASHBOARD_STYLES;
+    document.head.appendChild(_el);
+  }
+}
 
-function StatCard({ label, value, unit, accent, accentCard }) {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+// All wrapped in memo — parent re-renders (e.g. attStatus change) won't cascade
+// into these unless their own props actually changed.
+
+const StatCard = memo(function StatCard({ label, value, unit, accent, accentCard }) {
   return (
     <div className={`td-stat-card${accentCard ? " td-stat-card-accent" : ""}`}>
       <div className="td-stat-label">{label}</div>
@@ -769,9 +791,9 @@ function StatCard({ label, value, unit, accent, accentCard }) {
       {unit && <div className="td-stat-unit">{unit}</div>}
     </div>
   );
-}
+});
 
-function ThresholdBar({ label, current, target, met, formatValue }) {
+const ThresholdBar = memo(function ThresholdBar({ label, current, target, met, formatValue }) {
   const pct = Math.min((current / (target + 1)) * 100, 100);
   return (
     <div className="td-threshold-block">
@@ -794,13 +816,15 @@ function ThresholdBar({ label, current, target, met, formatValue }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Attendance Card ──────────────────────────────────────────────────────────
+// memo: only re-renders when attStatus, attMarking, or onMark ref changes.
 
-function AttendanceCard({ attStatus, attMarking, onMark }) {
+const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onMark }) {
   const isMarked  = attStatus?.marked === true;
-  const isLoading = attStatus === null || attMarking;
+  // Show loading spinner only on initial fetch (null), not during optimistic confirm
+  const isLoading = attStatus === null;
 
   return (
     <div className="td-att-wrap td-a1">
@@ -820,14 +844,19 @@ function AttendanceCard({ attStatus, attMarking, onMark }) {
         <button
           className="td-toggle-btn"
           onClick={onMark}
+          // Disable only during initial load or once confirmed marked
           disabled={isMarked || isLoading}
           aria-label={isMarked ? "Attendance marked" : "Mark attendance"}
         >
-          <div className={`td-toggle-track${isMarked ? " on" : ""}${isLoading ? " loading" : ""}`}>
+          <div className={[
+            "td-toggle-track",
+            isMarked ? "on" : "",
+            attMarking ? "loading" : "",
+          ].filter(Boolean).join(" ")}>
             <div className="td-toggle-knob" />
           </div>
           <span className={`td-toggle-label${isMarked ? " on" : ""}`}>
-            {isMarked ? "Present" : isLoading && attStatus === null ? "…" : "Off"}
+            {isMarked ? "Present" : isLoading ? "…" : "Off"}
           </span>
         </button>
       </div>
@@ -843,11 +872,13 @@ function AttendanceCard({ attStatus, attMarking, onMark }) {
       )}
     </div>
   );
-}
+});
 
 // ─── Incentive Dropdown ───────────────────────────────────────────────────────
+// memo + no props = this component NEVER re-renders from parent re-renders.
+// All state is fully internal. Perfect isolation.
 
-function IncentiveDropdown() {
+const IncentiveDropdown = memo(function IncentiveDropdown() {
   const [open,       setOpen]       = useState(false);
   const [year,       setYear]       = useState(NOW.getFullYear());
   const [month,      setMonth]      = useState(NOW.getMonth() + 1);
@@ -877,19 +908,23 @@ function IncentiveDropdown() {
     if (open) fetchIncentive();
   }, [open, fetchIncentive]);
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
     if (month === 1) { setYear((y) => y - 1); setMonth(12); }
     else setMonth((m) => m - 1);
-  };
-  const goForward = () => {
+  }, [month]);
+
+  const goForward = useCallback(() => {
     if (isCurrentMonth) return;
     if (month === 12) { setYear((y) => y + 1); setMonth(1); }
     else setMonth((m) => m + 1);
-  };
-  const resetToCurrent = () => {
+  }, [isCurrentMonth, month]);
+
+  const resetToCurrent = useCallback(() => {
     setYear(NOW.getFullYear());
     setMonth(NOW.getMonth() + 1);
-  };
+  }, []);
+
+  const toggleOpen = useCallback(() => setOpen((o) => !o), []);
 
   const hoursMet       = data ? data.totalHours  > 100   : false;
   const labourMet      = data ? data.totalLabour > 47500  : false;
@@ -899,7 +934,7 @@ function IncentiveDropdown() {
 
   return (
     <div className="td-section" style={{ marginTop: 16 }}>
-      <button className="td-incentive-toggle" onClick={() => setOpen((o) => !o)}>
+      <button className="td-incentive-toggle" onClick={toggleOpen}>
         <div>
           <div className="td-incentive-eyebrow">Monthly Incentive</div>
           <div className="td-incentive-sub">Payout on the 2nd of every month</div>
@@ -1010,7 +1045,7 @@ function IncentiveDropdown() {
       )}
     </div>
   );
-}
+});
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
@@ -1029,20 +1064,7 @@ export default function TechnicianDashboard() {
   const [attStatus,  setAttStatus]  = useState(null);
   const [attMarking, setAttMarking] = useState(false);
 
-  /* inject styles */
-  useEffect(() => {
-    const id = "td-dashboard-styles";
-    if (!document.getElementById(id)) {
-      const el = document.createElement("style");
-      el.id = id;
-      el.textContent = DASHBOARD_STYLES;
-      document.head.appendChild(el);
-    }
-    return () => {
-      const el = document.getElementById(id);
-      if (el) document.head.removeChild(el);
-    };
-  }, []);
+  // ── Style injection moved to module level above — no useEffect needed ────
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -1078,22 +1100,33 @@ export default function TechnicianDashboard() {
     }
   }, []);
 
-  const handleMarkAttendance = async () => {
+  // ── Optimistic attendance mark ────────────────────────────────────────────
+  // Toggle moves INSTANTLY on click. Server confirms in background.
+  // On failure: rolls back to unmarked. Stale closure safe via useCallback deps.
+  const handleMarkAttendance = useCallback(async () => {
     if (attMarking || attStatus?.marked) return;
     setAttMarking(true);
+    // Optimistic update — UI responds immediately, gate overlay lifts at once
+    setAttStatus({ marked: true, markedAt: new Date().toISOString() });
     try {
       const res = await api.post("/api/attendance/mark");
       const att = res.data.attendance;
+      // Confirm with server's authoritative markedAt timestamp
       setAttStatus({ marked: true, markedAt: att.markedAt });
     } catch (err) {
       console.error("Mark attendance error:", err);
+      // Rollback on network/server failure
+      setAttStatus({ marked: false, markedAt: null });
     } finally {
       setAttMarking(false);
     }
-  };
+  }, [attMarking, attStatus?.marked]);
 
-  useEffect(() => { fetchEntries();          }, [fetchEntries]);
-  useEffect(() => { fetchCurrentIncentive(); }, [fetchCurrentIncentive]);
+  // ── Initial data fetch — both calls start in parallel ────────────────────
+  useEffect(() => {
+    fetchEntries();
+    fetchCurrentIncentive();
+  }, [fetchEntries, fetchCurrentIncentive]);
 
   // Only fetch attendance once profile is fully set up
   useEffect(() => {
@@ -1105,34 +1138,41 @@ export default function TechnicianDashboard() {
     fetchCurrentIncentive();
   }, [fetchEntries, fetchCurrentIncentive]);
 
-  // ── This-month filter ─────────────────────────────────────────────────────
-  const thisMonthEntries = entries.filter((e) => {
-    const d = new Date(e.date);
-    return (
-      d.getFullYear() === NOW.getFullYear() &&
-      d.getMonth()    === NOW.getMonth()
-    );
-  });
+  const handleOpenForm = useCallback(() => setShowForm(true),  []);
+  const handleCloseForm = useCallback(() => setShowForm(false), []);
 
-  const totalHours    = thisMonthEntries.reduce((s, e) => s + (e.hoursWorked  || 0), 0);
-  const totalLabour   = thisMonthEntries.reduce((s, e) => s + (e.labourAmount || 0), 0);
-  const totalLeave    = thisMonthEntries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
-  const totalVehicles = new Set(thisMonthEntries.map((e) => e.vehicleNo).filter(Boolean)).size;
+  // ── Derived stats — memoized so they only recompute when entries changes ──
+  // Previously recomputed on EVERY render including attStatus flips
+  const thisMonthEntries = useMemo(() =>
+    entries.filter((e) => {
+      const d = new Date(e.date);
+      return (
+        d.getFullYear() === NOW.getFullYear() &&
+        d.getMonth()    === NOW.getMonth()
+      );
+    }),
+    [entries]
+  );
 
-  const needsProfile  = user?.role === "technician" && !user?.profileComplete;
-  const needsType     = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
+  const totalHours    = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.hoursWorked  || 0), 0), [thisMonthEntries]);
+  const totalLabour   = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.labourAmount || 0), 0), [thisMonthEntries]);
+  const totalLeave    = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.leaveDays    || 0), 0), [thisMonthEntries]);
+  const totalVehicles = useMemo(() => new Set(thisMonthEntries.map((e) => e.vehicleNo).filter(Boolean)).size, [thisMonthEntries]);
+
+  const incentiveDisplay = useMemo(() => {
+    if (currentIncentive === null) return "—";
+    if (currentIncentive === 0)    return "₹0";
+    return fmtMoney(currentIncentive);
+  }, [currentIncentive]);
+
+  const needsProfile = user?.role === "technician" && !user?.profileComplete;
+  const needsType    = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
 
   // Entry is allowed only when attendance is marked AND profile/type setup is done
-  const entryAllowed  = attStatus?.marked === true && !needsType;
-
-  const incentiveDisplay =
-    currentIncentive === null ? "—"  :
-    currentIncentive === 0    ? "₹0" :
-    fmtMoney(currentIncentive);
+  const entryAllowed = attStatus?.marked === true && !needsType;
 
   const currentMonthLabel = `${MONTH_NAMES[NOW.getMonth()]} ${NOW.getFullYear()}`;
 
-  // Whether to show the gate overlay (locked state)
   // Locked when: profile complete but attendance not yet marked (or still loading)
   const isGated = user?.profileComplete && attStatus?.marked !== true;
 
@@ -1178,6 +1218,7 @@ export default function TechnicianDashboard() {
           Everything below is visible but overlaid with a semi-transparent
           grey layer when attendance hasn't been marked yet.
           pointer-events on the overlay blocks all interaction.
+          With optimistic update, this lifts instantly on toggle click.
         */}
         <div className="td-gate-wrap">
           {isGated && <div className="td-gate-overlay" />}
@@ -1208,7 +1249,7 @@ export default function TechnicianDashboard() {
           {/* ── New Entry button ── */}
           <button
             className="td-new-entry-btn td-a3"
-            onClick={() => entryAllowed && setShowForm(true)}
+            onClick={() => entryAllowed && handleOpenForm()}
             disabled={!entryAllowed}
           >
             <span style={{ fontSize: "18px", lineHeight: 1 }}>+</span>
@@ -1238,7 +1279,7 @@ export default function TechnicianDashboard() {
       {/* ── FAB — disabled until attendance marked ── */}
       <button
         className="td-fab"
-        onClick={() => entryAllowed && setShowForm(true)}
+        onClick={() => entryAllowed && handleOpenForm()}
         disabled={!entryAllowed}
         aria-label="New Entry"
       >
@@ -1246,7 +1287,7 @@ export default function TechnicianDashboard() {
       </button>
 
       {showForm && (
-        <EntryForm onClose={() => setShowForm(false)} onSaved={handleSaved} />
+        <EntryForm onClose={handleCloseForm} onSaved={handleSaved} />
       )}
     </div>
   );
