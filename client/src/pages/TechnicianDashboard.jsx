@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useForm } from "react-hook-form";
 import Navbar from "../components/Navbar";
 import ProfileSetupModal from "../components/ProfileSetupModal";
 import EntryForm from "../components/EntryForm";
@@ -6,6 +7,7 @@ import EntryTable from "../components/EntryTable";
 import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
 import TechnicianTypeModal from "../components/TechnicianTypeModal";
+import { CATEGORIES } from "../utils/constants";
 
 // ─── Stable month reference (page-load time) ─────────────────────────────────
 const NOW = new Date();
@@ -26,6 +28,12 @@ const fmtTime = (iso) => {
   });
 };
 
+const toDateInputValue = (iso) => {
+  if (!iso) return "";
+  try { return new Date(iso).toISOString().slice(0, 10); }
+  catch { return ""; }
+};
+
 const TODAY_LABEL = NOW.toLocaleDateString("en-IN", {
   weekday: "short", day: "numeric", month: "short", year: "numeric",
 }).toUpperCase();
@@ -42,7 +50,6 @@ const SLABS = [
 ];
 
 // ─── Injected styles ──────────────────────────────────────────────────────────
-
 const DASHBOARD_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
@@ -50,6 +57,29 @@ const DASHBOARD_STYLES = `
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  @keyframes attPulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  /* ── Edit Modal — shared with EntryForm keyframe ── */
+  @keyframes emSlideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @keyframes emSpinnerRotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes emProgressFill {
+    from { transform: scaleX(0); transform-origin: left; }
+    to   { transform: scaleX(1); transform-origin: left; }
+  }
+
+  /* Kill number spinners in edit modal */
+  .em-input[type=number]::-webkit-inner-spin-button,
+  .em-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .em-input[type=number] { -moz-appearance: textfield; }
 
   .td-page {
     min-height: 100dvh;
@@ -71,702 +101,379 @@ const DASHBOARD_STYLES = `
     border-bottom: 1px solid #DDE3EE;
   }
   .td-eyebrow {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #1E3A8A;
-    margin-bottom: 6px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #1E3A8A; margin-bottom: 6px;
   }
   .td-name {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 36px;
-    font-weight: 700;
-    color: #0A1628;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    line-height: 1;
-    margin-bottom: 8px;
+    font-size: 36px; font-weight: 700; color: #0A1628;
+    letter-spacing: 0.02em; text-transform: uppercase;
+    line-height: 1; margin-bottom: 8px;
   }
-  .td-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  .td-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .td-tech-id {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: #1E3A8A;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    background: #EEF2F7;
-    padding: 3px 8px;
-    border: 1px solid #DDE3EE;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: #1E3A8A; font-weight: 600; letter-spacing: 0.06em;
+    background: #EEF2F7; padding: 3px 8px; border: 1px solid #DDE3EE;
   }
   .td-branch-badge {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #6B7A99;
-    background: #F8FAFC;
-    padding: 3px 8px;
-    border: 1px solid #DDE3EE;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #6B7A99; background: #F8FAFC;
+    padding: 3px 8px; border: 1px solid #DDE3EE;
   }
 
   /* ── Attendance Card ── */
-  .td-att-wrap {
-    border-left: 1px solid #DDE3EE;
-    border-right: 1px solid #DDE3EE;
-    border-bottom: 1px solid #DDE3EE;
-    background: #FFFFFF;
-    overflow: hidden;
-  }
+  .td-att-wrap { border-left: 1px solid #DDE3EE; border-right: 1px solid #DDE3EE; border-bottom: 1px solid #DDE3EE; background: #FFFFFF; overflow: hidden; }
   .td-att-card {
-    padding: 20px 20px 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    padding: 20px 20px 18px; display: flex; align-items: center;
+    justify-content: space-between; gap: 16px;
     border-left: 4px solid #CBD5E1;
     transition: border-left-color 0.3s ease, background 0.3s ease;
   }
-  .td-att-card.att-present {
-    border-left-color: #16A34A;
-    background: #F0FDF4;
-  }
-  .td-att-card.att-loading {
-    border-left-color: #E2E8F0;
-  }
+  .td-att-card.att-present  { border-left-color: #16A34A; background: #F0FDF4; }
+  .td-att-card.att-loading  { border-left-color: #E2E8F0; }
   .td-att-left { flex: 1; min-width: 0; }
   .td-att-eyebrow {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #6B7A99;
-    margin-bottom: 5px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #6B7A99; margin-bottom: 5px;
   }
   .td-att-today {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: #0A1628;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    line-height: 1.1;
-    margin-bottom: 5px;
+    font-family: 'Barlow Condensed', sans-serif; font-size: 20px;
+    font-weight: 700; color: #0A1628; letter-spacing: 0.04em;
+    text-transform: uppercase; line-height: 1.1; margin-bottom: 5px;
   }
-  .td-att-status-text {
-    font-size: 11px;
-    font-weight: 500;
-    color: #94A3B8;
-    letter-spacing: 0.02em;
-  }
-  .td-att-status-text.present {
-    color: #16A34A;
-    font-weight: 600;
-  }
+  .td-att-status-text { font-size: 11px; font-weight: 500; color: #94A3B8; letter-spacing: 0.02em; }
+  .td-att-status-text.present { color: #16A34A; font-weight: 600; }
 
-  /* Toggle switch — GPU-accelerated via will-change */
   .td-toggle-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px 0;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    flex-shrink: 0; background: none; border: none; cursor: pointer; padding: 4px 0;
     -webkit-tap-highlight-color: transparent;
   }
-  .td-toggle-btn:disabled {
-    cursor: not-allowed;
-  }
+  .td-toggle-btn:disabled { cursor: not-allowed; }
   .td-toggle-track {
-    width: 64px;
-    height: 34px;
-    border-radius: 17px;
-    background: #E2E8F0;
-    border: 2px solid #CBD5E1;
-    position: relative;
-    transition: background 0.2s ease, border-color 0.2s ease;
+    width: 64px; height: 34px; border-radius: 17px;
+    background: #E2E8F0; border: 2px solid #CBD5E1;
+    position: relative; transition: background 0.2s ease, border-color 0.2s ease;
     will-change: background, border-color;
   }
-  .td-toggle-track.on {
-    background: #16A34A;
-    border-color: #15803D;
-  }
-  /* Subtle pulse while confirming with server — only visible for ~300ms */
-  .td-toggle-track.on.loading {
-    opacity: 0.82;
-  }
-  .td-toggle-track.loading:not(.on) {
-    opacity: 0.55;
-  }
+  .td-toggle-track.on { background: #16A34A; border-color: #15803D; }
+  .td-toggle-track.on.loading { opacity: 0.82; }
+  .td-toggle-track.loading:not(.on) { opacity: 0.55; }
   .td-toggle-knob {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: #FFFFFF;
+    position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+    border-radius: 50%; background: #FFFFFF;
     box-shadow: 0 2px 6px rgba(0,0,0,0.22);
-    /* Snappier: 0.2s vs original 0.28s + GPU layer */
     transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform;
   }
-  .td-toggle-track.on .td-toggle-knob {
-    transform: translateX(30px);
-  }
-  .td-toggle-label {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #94A3B8;
-    transition: color 0.2s ease;
-  }
+  .td-toggle-track.on .td-toggle-knob { transform: translateX(30px); }
+  .td-toggle-label { font-size: 8px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #94A3B8; transition: color 0.2s ease; }
   .td-toggle-label.on { color: #16A34A; }
 
-  /* Unlock prompt strip */
-  .td-att-prompt {
-    background: #EEF2F7;
-    border-top: 1px solid #E2E8F0;
-    padding: 9px 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .td-att-prompt-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #1E3A8A;
-    flex-shrink: 0;
-    animation: attPulse 1.6s ease-in-out infinite;
-  }
-  @keyframes attPulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-  }
-  .td-att-prompt-text {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #1E3A8A;
-  }
+  .td-att-prompt { background: #EEF2F7; border-top: 1px solid #E2E8F0; padding: 9px 20px; display: flex; align-items: center; gap: 8px; }
+  .td-att-prompt-dot { width: 5px; height: 5px; border-radius: 50%; background: #1E3A8A; flex-shrink: 0; animation: attPulse 1.6s ease-in-out infinite; }
+  .td-att-prompt-text { font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #1E3A8A; }
 
-  /* ── Gate overlay wrapper ── */
-  .td-gate-wrap {
-    position: relative;
-  }
-  .td-gate-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(238, 242, 247, 0.80);
-    z-index: 50;
-    pointer-events: all;
-    backdrop-filter: grayscale(0.4);
-    -webkit-backdrop-filter: grayscale(0.4);
-  }
+  /* ── Gate overlay ── */
+  .td-gate-wrap { position: relative; }
+  .td-gate-overlay { position: absolute; inset: 0; background: rgba(238,242,247,0.80); z-index: 50; pointer-events: all; backdrop-filter: grayscale(0.4); -webkit-backdrop-filter: grayscale(0.4); }
 
   /* ── Stat grid ── */
-  .td-stat-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: #DDE3EE;
-    border-left: 1px solid #DDE3EE;
-    border-right: 1px solid #DDE3EE;
-  }
-  .td-stat-card {
-    background: #FFFFFF;
-    padding: 18px 16px 16px;
-    display: flex;
-    flex-direction: column;
-  }
-  .td-stat-card-accent {
-    background: #FFFFFF;
-    border-left: 3px solid #1E3A8A;
-  }
-  .td-stat-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #6B7A99;
-    margin-bottom: 10px;
-  }
-  .td-stat-value {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 36px;
-    font-weight: 700;
-    color: #0A1628;
-    line-height: 1;
-    letter-spacing: 0.01em;
-    margin-bottom: 4px;
-  }
-  .td-stat-unit {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #94A3B8;
-  }
+  .td-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #DDE3EE; border-left: 1px solid #DDE3EE; border-right: 1px solid #DDE3EE; }
+  .td-stat-card { background: #FFFFFF; padding: 18px 16px 16px; display: flex; flex-direction: column; }
+  .td-stat-card-accent { background: #FFFFFF; border-left: 3px solid #1E3A8A; }
+  .td-stat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #6B7A99; margin-bottom: 10px; }
+  .td-stat-value { font-family: 'Barlow Condensed', sans-serif; font-size: 36px; font-weight: 700; color: #0A1628; line-height: 1; letter-spacing: 0.01em; margin-bottom: 4px; }
+  .td-stat-unit { font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #94A3B8; }
 
   /* ── Month context banner ── */
-  .td-month-banner {
-    background: #F8FAFC;
-    border-left: 1px solid #DDE3EE;
-    border-right: 1px solid #DDE3EE;
-    border-bottom: 1px solid #EEF2F7;
-    padding: 7px 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .td-month-banner-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #1E3A8A;
-    flex-shrink: 0;
-  }
-  .td-month-banner-text {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #6B7A99;
-  }
-  .td-month-banner-value {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    font-weight: 600;
-    color: #1E3A8A;
-    letter-spacing: 0.06em;
-  }
+  .td-month-banner { background: #F8FAFC; border-left: 1px solid #DDE3EE; border-right: 1px solid #DDE3EE; border-bottom: 1px solid #EEF2F7; padding: 7px 16px; display: flex; align-items: center; gap: 8px; }
+  .td-month-banner-dot { width: 5px; height: 5px; border-radius: 50%; background: #1E3A8A; flex-shrink: 0; }
+  .td-month-banner-text { font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #6B7A99; }
+  .td-month-banner-value { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #1E3A8A; letter-spacing: 0.06em; }
 
   /* ── New Entry button ── */
   .td-new-entry-btn {
-    width: 100%;
-    height: 60px;
-    background: #1E3A8A;
-    border: none;
-    border-top: 1px solid #DDE3EE;
-    color: #FFFFFF;
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    transition: background 0.15s ease;
-    border-radius: 0;
+    width: 100%; height: 60px; background: #1E3A8A; border: none;
+    border-top: 1px solid #DDE3EE; color: #FFFFFF;
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    transition: background 0.15s ease; border-radius: 0;
     -webkit-tap-highlight-color: transparent;
   }
   .td-new-entry-btn:hover  { background: #1E40AF; }
   .td-new-entry-btn:active { background: #1E3A8A; }
-  .td-new-entry-btn:disabled {
-    background: #94A3B8;
-    cursor: not-allowed;
-  }
+  .td-new-entry-btn:disabled { background: #94A3B8; cursor: not-allowed; }
 
   /* ── Section wrapper ── */
-  .td-section {
-    margin: 16px 0 0;
-    border: 1px solid #DDE3EE;
-    background: #FFFFFF;
-    overflow: hidden;
-  }
-  .td-section-header {
-    padding: 14px 20px;
-    border-bottom: 1px solid #EEF2F7;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .td-section-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #6B7A99;
-  }
-  .td-section-count {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: #94A3B8;
-  }
+  .td-section { margin: 16px 0 0; border: 1px solid #DDE3EE; background: #FFFFFF; overflow: hidden; }
+  .td-section-header { padding: 14px 20px; border-bottom: 1px solid #EEF2F7; display: flex; justify-content: space-between; align-items: center; }
+  .td-section-label { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #6B7A99; }
+  .td-section-count { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #94A3B8; }
 
   /* ── Incentive card ── */
-  .td-incentive-toggle {
-    width: 100%;
-    padding: 18px 20px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .td-incentive-eyebrow {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #1E3A8A;
-    margin-bottom: 3px;
-    text-align: left;
-  }
-  .td-incentive-sub {
-    font-size: 11px;
-    color: #6B7A99;
-    font-weight: 400;
-    text-align: left;
-  }
-  .td-chevron {
-    width: 32px;
-    height: 32px;
-    border: 1.5px solid #DDE3EE;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #374151;
-    font-size: 20px;
-    flex-shrink: 0;
-    transition: transform 0.22s ease, border-color 0.15s;
-    line-height: 1;
-  }
-  .td-chevron.open {
-    transform: rotate(180deg);
-    border-color: #1E3A8A;
-    color: #1E3A8A;
-  }
+  .td-incentive-toggle { width: 100%; padding: 18px 20px; background: none; border: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; -webkit-tap-highlight-color: transparent; }
+  .td-incentive-eyebrow { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #1E3A8A; margin-bottom: 3px; text-align: left; }
+  .td-incentive-sub { font-size: 11px; color: #6B7A99; font-weight: 400; text-align: left; }
+  .td-chevron { width: 32px; height: 32px; border: 1.5px solid #DDE3EE; display: flex; align-items: center; justify-content: center; color: #374151; font-size: 20px; flex-shrink: 0; transition: transform 0.22s ease, border-color 0.15s; line-height: 1; }
+  .td-chevron.open { transform: rotate(180deg); border-color: #1E3A8A; color: #1E3A8A; }
 
   /* ── Month nav ── */
-  .td-month-strip {
-    padding: 10px 20px;
-    border-top: 1px solid #EEF2F7;
-    border-bottom: 1px solid #EEF2F7;
-    background: #F8FAFC;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-  }
-  .td-month-nav {
-    background: none;
-    border: 1.5px solid #DDE3EE;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    color: #374151;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-radius: 0;
-    transition: border-color 0.15s, color 0.15s;
-    -webkit-tap-highlight-color: transparent;
-  }
+  .td-month-strip { padding: 10px 20px; border-top: 1px solid #EEF2F7; border-bottom: 1px solid #EEF2F7; background: #F8FAFC; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+  .td-month-nav { background: none; border: 1.5px solid #DDE3EE; width: 32px; height: 32px; cursor: pointer; color: #374151; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 0; transition: border-color 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
   .td-month-nav:hover:not(:disabled) { border-color: #1E3A8A; color: #1E3A8A; }
   .td-month-nav:disabled { color: #CBD5E1; cursor: not-allowed; border-color: #EEF2F7; }
-  .td-month-now-pill {
-    background: none;
-    border: 1.5px solid #1E3A8A;
-    padding: 4px 10px;
-    cursor: pointer;
-    color: #1E3A8A;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    font-family: 'IBM Plex Sans', sans-serif;
-    border-radius: 0;
-    transition: background 0.15s, color 0.15s;
-    -webkit-tap-highlight-color: transparent;
-  }
+  .td-month-now-pill { background: none; border: 1.5px solid #1E3A8A; padding: 4px 10px; cursor: pointer; color: #1E3A8A; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'IBM Plex Sans', sans-serif; border-radius: 0; transition: background 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
   .td-month-now-pill:hover { background: #1E3A8A; color: #FFFFFF; }
-  .td-month-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    color: #0A1628;
-    min-width: 72px;
-    text-align: center;
-  }
+  .td-month-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #0A1628; min-width: 72px; text-align: center; }
 
   /* ── Incentive body ── */
   .td-incentive-body { padding: 20px; }
-
-  .td-totals-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 1px;
-    background: #DDE3EE;
-    border: 1px solid #DDE3EE;
-    margin-bottom: 20px;
-  }
-  .td-total-cell {
-    background: #F8FAFC;
-    padding: 12px 8px;
-    text-align: center;
-  }
-  .td-total-cell-label {
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #94A3B8;
-    margin-bottom: 5px;
-  }
-  .td-total-cell-value {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 15px;
-    font-weight: 700;
-  }
+  .td-totals-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: #DDE3EE; border: 1px solid #DDE3EE; margin-bottom: 20px; }
+  .td-total-cell { background: #F8FAFC; padding: 12px 8px; text-align: center; }
+  .td-total-cell-label { font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #94A3B8; margin-bottom: 5px; }
+  .td-total-cell-value { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700; }
 
   .td-threshold-block { margin-bottom: 16px; }
-  .td-threshold-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 7px;
-  }
-  .td-threshold-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #6B7A99;
-  }
-  .td-threshold-vals {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .td-threshold-current {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    color: #0A1628;
-  }
+  .td-threshold-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+  .td-threshold-label { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #6B7A99; }
+  .td-threshold-vals { display: flex; align-items: center; gap: 6px; }
+  .td-threshold-current { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: #0A1628; }
   .td-threshold-sep { font-size: 10px; color: #CBD5E1; }
-  .td-threshold-target {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    color: #94A3B8;
-  }
-  .td-threshold-badge {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 2px 7px;
-    letter-spacing: 0.04em;
-  }
-  .td-threshold-badge.met {
-    color: #16A34A;
-    background: #DCFCE7;
-    border: 1px solid #BBF7D0;
-  }
-  .td-threshold-badge.unmet {
-    color: #DC2626;
-    background: #FEF2F2;
-    border: 1px solid #FECACA;
-  }
-  .td-progress-track {
-    height: 5px;
-    background: #E2E8F0;
-    overflow: hidden;
-  }
-  .td-progress-fill {
-    height: 100%;
-    transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .td-both-warning {
-    background: #FEF2F2;
-    border: 1px solid #FECACA;
-    border-left: 3px solid #DC2626;
-    padding: 10px 12px;
-    margin-top: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #991B1B;
-    font-family: 'IBM Plex Sans', sans-serif;
-  }
+  .td-threshold-target { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #94A3B8; }
+  .td-threshold-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; letter-spacing: 0.04em; }
+  .td-threshold-badge.met   { color: #16A34A; background: #DCFCE7; border: 1px solid #BBF7D0; }
+  .td-threshold-badge.unmet { color: #DC2626; background: #FEF2F2; border: 1px solid #FECACA; }
+  .td-progress-track { height: 5px; background: #E2E8F0; overflow: hidden; }
+  .td-progress-fill  { height: 100%; transition: width 0.5s cubic-bezier(0.22,1,0.36,1); }
+  .td-both-warning { background: #FEF2F2; border: 1px solid #FECACA; border-left: 3px solid #DC2626; padding: 10px 12px; margin-top: 4px; font-size: 11px; font-weight: 500; color: #991B1B; font-family: 'IBM Plex Sans', sans-serif; }
 
-  .td-slab-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  .td-slab-badge {
-    padding: 6px 16px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-family: 'IBM Plex Sans', sans-serif;
-    border: 1.5px solid;
-  }
-  .td-slab-badge.achieved {
-    color: #16A34A;
-    border-color: #86EFAC;
-    background: #F0FDF4;
-  }
-  .td-slab-badge.none {
-    color: #94A3B8;
-    border-color: #E2E8F0;
-    background: #F8FAFC;
-  }
+  .td-slab-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .td-slab-badge { padding: 6px 16px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-family: 'IBM Plex Sans', sans-serif; border: 1.5px solid; }
+  .td-slab-badge.achieved { color: #16A34A; border-color: #86EFAC; background: #F0FDF4; }
+  .td-slab-badge.none     { color: #94A3B8; border-color: #E2E8F0; background: #F8FAFC; }
 
-  .td-breakdown {
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-left: 3px solid #1E3A8A;
-  }
-  .td-breakdown-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 11px 14px;
-    border-bottom: 1px solid #EEF2F7;
-  }
+  .td-breakdown { background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 3px solid #1E3A8A; }
+  .td-breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-bottom: 1px solid #EEF2F7; }
   .td-breakdown-row:last-child { border-bottom: none; }
-  .td-breakdown-label {
-    font-size: 11px;
-    color: #6B7A99;
-    font-weight: 500;
-    font-family: 'IBM Plex Sans', sans-serif;
-  }
-  .td-breakdown-value {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    color: #374151;
-  }
+  .td-breakdown-label { font-size: 11px; color: #6B7A99; font-weight: 500; font-family: 'IBM Plex Sans', sans-serif; }
+  .td-breakdown-value { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #374151; }
   .td-breakdown-row.dimmed .td-breakdown-label,
-  .td-breakdown-row.dimmed .td-breakdown-value {
-    color: #CBD5E1;
-  }
+  .td-breakdown-row.dimmed .td-breakdown-value { color: #CBD5E1; }
 
-  .td-final-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 14px 12px;
-    background: #FFFFFF;
-    border: 1px solid #DDE3EE;
-    border-top: none;
-    margin-top: 0;
-  }
-  .td-final-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-family: 'IBM Plex Sans', sans-serif;
-  }
-  .td-final-amount {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 32px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-  .td-entry-note {
-    font-size: 10px;
-    color: #94A3B8;
-    text-align: right;
-    padding: 8px 20px 16px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-  }
+  .td-final-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 14px 12px; background: #FFFFFF; border: 1px solid #DDE3EE; border-top: none; }
+  .td-final-label { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; font-family: 'IBM Plex Sans', sans-serif; }
+  .td-final-amount { font-family: 'Barlow Condensed', sans-serif; font-size: 32px; font-weight: 700; letter-spacing: 0.02em; }
+  .td-entry-note { font-size: 10px; color: #94A3B8; text-align: right; padding: 8px 20px 16px; font-weight: 500; letter-spacing: 0.02em; }
 
   /* ── FAB ── */
   .td-fab {
-    position: fixed;
-    bottom: 24px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #1E3A8A;
-    color: #FFFFFF;
-    border: none;
-    cursor: pointer;
-    font-size: 26px;
-    font-weight: 300;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: fixed; bottom: 24px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #1E3A8A; color: #FFFFFF; border: none; cursor: pointer;
+    font-size: 26px; font-weight: 300; display: flex;
+    align-items: center; justify-content: center;
     box-shadow: 0 4px 20px rgba(30,58,138,0.35);
     transition: background 0.15s, transform 0.15s, opacity 0.15s;
-    z-index: 100;
-    -webkit-tap-highlight-color: transparent;
+    z-index: 100; -webkit-tap-highlight-color: transparent;
   }
   .td-fab:hover  { background: #1E40AF; transform: scale(1.06); }
   .td-fab:active { background: #1E3A8A; transform: scale(0.97); }
-  .td-fab:disabled {
-    background: #94A3B8;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    opacity: 0.6;
-  }
+  .td-fab:disabled { background: #94A3B8; cursor: not-allowed; transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.15); opacity: 0.6; }
 
-  /* Empty state */
-  .td-empty {
-    padding: 40px 20px;
-    text-align: center;
-  }
+  /* States */
+  .td-empty { padding: 40px 20px; text-align: center; }
   .td-empty-icon { font-size: 28px; margin-bottom: 10px; }
-  .td-empty-text {
-    font-size: 12px;
-    color: #94A3B8;
-    font-weight: 500;
-    letter-spacing: 0.06em;
+  .td-empty-text { font-size: 12px; color: #94A3B8; font-weight: 500; letter-spacing: 0.06em; }
+  .td-loading { padding: 40px 20px; text-align: center; font-size: 12px; color: #94A3B8; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; }
+  .td-incent-placeholder { padding: 32px 20px; text-align: center; }
+  .td-incent-placeholder-text { font-size: 12px; color: #94A3B8; font-weight: 500; letter-spacing: 0.06em; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Edit Entry Modal — bottom sheet, aligned with EntryForm
+  ───────────────────────────────────────────────────────────────────────── */
+
+  /* Backdrop */
+  .em-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(10, 22, 40, 0.72);
+    display: flex; align-items: flex-end; justify-content: center;
   }
 
-  /* Loading */
-  .td-loading {
-    padding: 40px 20px;
-    text-align: center;
-    font-size: 12px;
-    color: #94A3B8;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+  /* Sheet */
+  .em-sheet {
+    background: #FFFFFF;
+    border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 520px;
+    max-height: 92dvh;
+    overflow-y: auto; overflow-x: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 24px);
+    -webkit-overflow-scrolling: touch;
+    animation: emSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+    position: relative;
+  }
+  .em-sheet::-webkit-scrollbar { width: 4px; }
+  .em-sheet::-webkit-scrollbar-track { background: #F8FAFC; }
+  .em-sheet::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
+
+  /* Progress bar */
+  .em-progress {
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: #DDE3EE; border-radius: 16px 16px 0 0; overflow: hidden;
+  }
+  .em-progress-fill {
+    position: absolute; inset: 0; background: #1E3A8A;
+    animation: emProgressFill 1.8s ease-in-out infinite alternate;
   }
 
-  /* Incentive empty/error */
-  .td-incent-placeholder {
-    padding: 32px 20px;
-    text-align: center;
+  /* Sticky header */
+  .em-header {
+    position: sticky; top: 0; z-index: 10;
+    background: #FFFFFF;
+    border-bottom: 1.5px solid #E2E8F0;
+    padding: 14px 20px;
   }
-  .td-incent-placeholder-text {
-    font-size: 12px;
-    color: #94A3B8;
-    font-weight: 500;
-    letter-spacing: 0.06em;
+  .em-drag-handle {
+    width: 40px; height: 4px; background: #CBD5E1;
+    border-radius: 2px; margin: 0 auto 14px;
+  }
+  .em-header-row { display: flex; justify-content: space-between; align-items: center; }
+  .em-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px; font-weight: 700; color: #0A1628;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    margin: 0; line-height: 1;
+  }
+  .em-subtitle {
+    font-size: 11px; font-weight: 600; color: #6B7A99;
+    margin-top: 4px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: 'IBM Plex Sans', sans-serif;
+    transition: color 0.2s;
+  }
+  .em-close {
+    background: #F8FAFC; border: 1.5px solid #DDE3EE; border-radius: 0;
+    width: 44px; height: 44px; color: #374151; font-size: 22px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .em-close:hover:not(:disabled) { background: #F1F5F9; border-color: #94A3B8; }
+  .em-close:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Form body */
+  .em-body {
+    display: flex; flex-direction: column; gap: 22px;
+    padding: 24px 20px 36px;
+  }
+
+  /* Error banner */
+  .em-error-banner {
+    background: #FEF2F2; border: 1.5px solid #FCA5A5;
+    border-left: 4px solid #DC2626; padding: 14px 16px;
+  }
+  .em-error-text {
+    margin: 0; font-size: 13px; font-weight: 600; color: #991B1B;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  /* Field label */
+  .em-label {
+    display: block; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: #374151;
+    margin-bottom: 8px; font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .em-required { color: #1E3A8A; margin-left: 3px; }
+
+  /* Input */
+  .em-input {
+    width: 100%; box-sizing: border-box;
+    height: 56px; padding: 0 14px;
+    background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 0;
+    color: #0A1628; font-size: 16px; font-weight: 700;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none; appearance: none; -webkit-appearance: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .em-input:focus   { border-color: #1E3A8A !important; background: #FFFFFF !important; outline: none; }
+  .em-input--err    { border-color: #DC2626 !important; background: #FEF2F2 !important; }
+  .em-input[type="date"] { color-scheme: light; font-size: 15px; }
+
+  /* Select arrow */
+  .em-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%231E3A8A' d='M7 9.5L2 4.5h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+    padding-right: 40px; cursor: pointer;
+  }
+
+  /* Field error */
+  .em-field-err {
+    margin: 6px 0 0; font-size: 11px; font-weight: 600;
+    color: #DC2626; letter-spacing: 0.02em;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  /* Two-column row */
+  .em-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  /* Rupee / unit prefix block */
+  .em-prefix {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 48px;
+    display: flex; align-items: center; justify-content: center;
+    color: #FFFFFF; font-weight: 700; font-family: 'IBM Plex Sans', sans-serif;
+    pointer-events: none; user-select: none; z-index: 1;
+  }
+  .em-prefix--primary { background: #1E3A8A; font-size: 18px; }
+  .em-prefix--hrs     { background: #1E3A8A; font-size: 13px; letter-spacing: 0.04em; }
+  .em-prefix--lve     { background: #64748B; font-size: 11px; letter-spacing: 0.04em; }
+
+  /* Section divider */
+  .em-divider { display: flex; align-items: center; gap: 12px; margin: 4px 0 0; }
+  .em-divider-line  { flex: 1; height: 1px; background: #E2E8F0; }
+  .em-divider-label { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #94A3B8; white-space: nowrap; }
+
+  /* Submit */
+  .em-submit {
+    width: 100%; height: 60px; background: #1E3A8A; border: none; border-radius: 0;
+    color: #FFFFFF; font-size: 13px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif; margin-top: 6px;
+    transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .em-submit:hover:not(:disabled) { background: #1E40AF; }
+  .em-submit:active:not(:disabled) { background: #1E3A8A; transform: scale(0.99); }
+  .em-submit:disabled { background: #93C5FD; cursor: not-allowed; }
+
+  /* Cancel link */
+  .em-cancel {
+    background: none; border: none; color: #94A3B8; cursor: pointer;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: 'IBM Plex Sans', sans-serif; padding: 4px;
+    margin-top: -10px; align-self: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s;
+  }
+  .em-cancel:hover:not(:disabled) { color: #374151; }
+  .em-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Spinner inside submit */
+  .em-spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2.5px solid rgba(255,255,255,0.35);
+    border-top-color: #FFFFFF; border-radius: 50%;
+    animation: emSpinnerRotate 0.65s linear infinite;
+    margin-right: 10px; flex-shrink: 0;
+  }
+
+  @media (max-width: 480px) {
+    .em-row { grid-template-columns: 1fr; }
   }
 `;
 
 // ─── Module-level style injection ─────────────────────────────────────────────
-// Runs ONCE when the JS module loads — no FOUC, no re-injection on re-navigation.
-// This replaces the old useEffect approach which removed/re-added styles on mount/unmount.
 if (typeof document !== "undefined") {
   const _styleId = "td-dashboard-styles";
   if (!document.getElementById(_styleId)) {
@@ -774,12 +481,12 @@ if (typeof document !== "undefined") {
     _el.id = _styleId;
     _el.textContent = DASHBOARD_STYLES;
     document.head.appendChild(_el);
+  } else {
+    document.getElementById(_styleId).textContent = DASHBOARD_STYLES;
   }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-// All wrapped in memo — parent re-renders (e.g. attStatus change) won't cascade
-// into these unless their own props actually changed.
 
 const StatCard = memo(function StatCard({ label, value, unit, accent, accentCard }) {
   return (
@@ -819,11 +526,8 @@ const ThresholdBar = memo(function ThresholdBar({ label, current, target, met, f
 });
 
 // ─── Attendance Card ──────────────────────────────────────────────────────────
-// memo: only re-renders when attStatus, attMarking, or onMark ref changes.
-
 const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onMark }) {
   const isMarked  = attStatus?.marked === true;
-  // Show loading spinner only on initial fetch (null), not during optimistic confirm
   const isLoading = attStatus === null;
 
   return (
@@ -844,13 +548,12 @@ const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onM
         <button
           className="td-toggle-btn"
           onClick={onMark}
-          // Disable only during initial load or once confirmed marked
           disabled={isMarked || isLoading}
           aria-label={isMarked ? "Attendance marked" : "Mark attendance"}
         >
           <div className={[
             "td-toggle-track",
-            isMarked ? "on" : "",
+            isMarked   ? "on"      : "",
             attMarking ? "loading" : "",
           ].filter(Boolean).join(" ")}>
             <div className="td-toggle-knob" />
@@ -861,7 +564,6 @@ const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onM
         </button>
       </div>
 
-      {/* Pulsing prompt strip — only shown when not yet marked */}
       {!isMarked && attStatus !== null && (
         <div className="td-att-prompt">
           <div className="td-att-prompt-dot" />
@@ -875,9 +577,6 @@ const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onM
 });
 
 // ─── Incentive Dropdown ───────────────────────────────────────────────────────
-// memo + no props = this component NEVER re-renders from parent re-renders.
-// All state is fully internal. Perfect isolation.
-
 const IncentiveDropdown = memo(function IncentiveDropdown() {
   const [open,       setOpen]       = useState(false);
   const [year,       setYear]       = useState(NOW.getFullYear());
@@ -1047,8 +746,242 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
   );
 });
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// ─── Edit Entry Modal ─────────────────────────────────────────────────────────
+// Styled as a bottom sheet matching EntryForm — same inputs, layout, and feel.
+// All logic is unchanged; only the presentation has been updated.
+function EditEntryModal({ entry, onSave, onClose, saving, error }) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm();
 
+  // Re-populate every time a different entry is opened
+  useEffect(() => {
+    if (entry) {
+      reset({
+        date:         toDateInputValue(entry.date),
+        category:     entry.category     || "",
+        vehicleNo:    entry.vehicleNo    || "",
+        jcNo:         entry.jcNo         || "",
+        hoursWorked:  entry.hoursWorked  ?? "",
+        labourAmount: entry.labourAmount ?? "",
+        leaveDays:    entry.leaveDays    ?? 0,
+      });
+    }
+  }, [entry, reset]);
+
+  if (!entry) return null;
+
+  return (
+    <div
+      className="em-overlay"
+      onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}
+    >
+      <div className="em-sheet" onClick={(e) => e.stopPropagation()}>
+
+        {/* Progress bar while saving */}
+        {saving && (
+          <div className="em-progress">
+            <div className="em-progress-fill" />
+          </div>
+        )}
+
+        {/* ── Sticky header ── */}
+        <div className="em-header">
+          <div className="em-drag-handle" />
+          <div className="em-header-row">
+            <div>
+              <h2 className="em-title">Edit Entry</h2>
+              <p className="em-subtitle" style={{ color: saving ? "#93C5FD" : "#6B7A99" }}>
+                {saving ? "Saving…" : "Update job card"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="em-close"
+              onClick={onClose}
+              disabled={saving}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* ── Form body ── */}
+        <form onSubmit={handleSubmit(onSave)} noValidate className="em-body">
+
+          {/* Server error */}
+          {error && (
+            <div className="em-error-banner">
+              <p className="em-error-text">{error}</p>
+            </div>
+          )}
+
+          {/* ── Date + Category ── */}
+          <div className="em-row">
+            <div>
+              <label className="em-label">
+                Date <span className="em-required">*</span>
+              </label>
+              <input
+                type="date"
+                className={`em-input${errors.date ? " em-input--err" : ""}`}
+                {...register("date", { required: "Date is required" })}
+              />
+              {errors.date && <p className="em-field-err">{errors.date.message}</p>}
+            </div>
+            <div>
+              <label className="em-label">
+                Category <span className="em-required">*</span>
+              </label>
+              <select
+                className={`em-input em-select${errors.category ? " em-input--err" : ""}`}
+                {...register("category", { required: "Category is required" })}
+              >
+                <option value="">Select…</option>
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              {errors.category && <p className="em-field-err">{errors.category.message}</p>}
+            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div className="em-divider">
+            <div className="em-divider-line" />
+            <span className="em-divider-label">Job Details</span>
+            <div className="em-divider-line" />
+          </div>
+
+          {/* ── Vehicle No + JC No ── */}
+          <div className="em-row">
+            <div>
+              <label className="em-label">Vehicle No</label>
+              <input
+                type="text"
+                placeholder="KA-01-AB-1234"
+                className="em-input"
+                {...register("vehicleNo")}
+              />
+            </div>
+            <div>
+              <label className="em-label">
+                JC No <span className="em-required">*</span>
+              </label>
+              <input
+                type="text"
+                className={`em-input${errors.jcNo ? " em-input--err" : ""}`}
+                {...register("jcNo", { required: "JC No cannot be empty" })}
+              />
+              {errors.jcNo && <p className="em-field-err">{errors.jcNo.message}</p>}
+            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div className="em-divider">
+            <div className="em-divider-line" />
+            <span className="em-divider-label">Financials &amp; Hours</span>
+            <div className="em-divider-line" />
+          </div>
+
+          {/* ── Labour Amount ── */}
+          <div>
+            <label className="em-label">
+              Labour Amount <span className="em-required">*</span>
+            </label>
+            <div style={{ position: "relative" }}>
+              <div className="em-prefix em-prefix--primary">₹</div>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="0"
+                className={`em-input${errors.labourAmount ? " em-input--err" : ""}`}
+                style={{ paddingLeft: "62px" }}
+                {...register("labourAmount", {
+                  required: "Required",
+                  min:      { value: 0,      message: "Min ₹0" },
+                  max:      { value: 100000, message: "Max ₹1,00,000" },
+                  valueAsNumber: true,
+                })}
+              />
+            </div>
+            {errors.labourAmount && <p className="em-field-err">{errors.labourAmount.message}</p>}
+          </div>
+
+          {/* ── Hours Worked ── */}
+          <div>
+            <label className="em-label">
+              Hours Worked <span className="em-required">*</span>
+            </label>
+            <div style={{ position: "relative" }}>
+              <div className="em-prefix em-prefix--hrs">HRS</div>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="0"
+                className={`em-input${errors.hoursWorked ? " em-input--err" : ""}`}
+                style={{ paddingLeft: "62px" }}
+                {...register("hoursWorked", {
+                  required: "Required",
+                  min:      { value: 0,  message: "Min 0" },
+                  max:      { value: 24, message: "Max 24 hrs" },
+                  valueAsNumber: true,
+                })}
+              />
+            </div>
+            {errors.hoursWorked && <p className="em-field-err">{errors.hoursWorked.message}</p>}
+          </div>
+
+          {/* ── Leave Days ── */}
+          <div>
+            <label className="em-label">Leave Days</label>
+            <div style={{ position: "relative" }}>
+              <div className="em-prefix em-prefix--lve">LVE</div>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="0"
+                className={`em-input${errors.leaveDays ? " em-input--err" : ""}`}
+                style={{ paddingLeft: "62px" }}
+                {...register("leaveDays", {
+                  required: "Required",
+                  min:      { value: 0,  message: "Min 0" },
+                  max:      { value: 31, message: "Max 31 days" },
+                  valueAsNumber: true,
+                })}
+              />
+            </div>
+            {errors.leaveDays && <p className="em-field-err">{errors.leaveDays.message}</p>}
+          </div>
+
+          {/* ── Save ── */}
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving
+              ? <><span className="em-spinner" />Saving…</>
+              : "Save Changes"}
+          </button>
+
+          {/* ── Cancel ── */}
+          <button
+            type="button"
+            className="em-cancel"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function TechnicianDashboard() {
   const { user } = useAuthStore();
 
@@ -1057,14 +990,12 @@ export default function TechnicianDashboard() {
   const [showForm,         setShowForm]         = useState(false);
   const [currentIncentive, setCurrentIncentive] = useState(null);
 
-  // ── Attendance state ──────────────────────────────────────────────────────
-  // null  = still loading today's status from server
-  // { marked: false, markedAt: null }  = not yet marked
-  // { marked: true,  markedAt: Date }  = present today
   const [attStatus,  setAttStatus]  = useState(null);
   const [attMarking, setAttMarking] = useState(false);
 
-  // ── Style injection moved to module level above — no useEffect needed ────
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [editSaving,   setEditSaving]   = useState(false);
+  const [editError,    setEditError]    = useState("");
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -1088,47 +1019,37 @@ export default function TechnicianDashboard() {
     }
   }, []);
 
-  // ── Attendance fetch ──────────────────────────────────────────────────────
   const fetchAttStatus = useCallback(async () => {
     try {
       const res = await api.get("/api/attendance/today");
-      setAttStatus(res.data); // { marked, markedAt, date }
+      setAttStatus(res.data);
     } catch (err) {
       console.error("Attendance status fetch error:", err);
-      // Fail open — allow dashboard to load even if attendance check fails
       setAttStatus({ marked: false, markedAt: null });
     }
   }, []);
 
-  // ── Optimistic attendance mark ────────────────────────────────────────────
-  // Toggle moves INSTANTLY on click. Server confirms in background.
-  // On failure: rolls back to unmarked. Stale closure safe via useCallback deps.
   const handleMarkAttendance = useCallback(async () => {
     if (attMarking || attStatus?.marked) return;
     setAttMarking(true);
-    // Optimistic update — UI responds immediately, gate overlay lifts at once
     setAttStatus({ marked: true, markedAt: new Date().toISOString() });
     try {
       const res = await api.post("/api/attendance/mark");
       const att = res.data.attendance;
-      // Confirm with server's authoritative markedAt timestamp
       setAttStatus({ marked: true, markedAt: att.markedAt });
     } catch (err) {
       console.error("Mark attendance error:", err);
-      // Rollback on network/server failure
       setAttStatus({ marked: false, markedAt: null });
     } finally {
       setAttMarking(false);
     }
   }, [attMarking, attStatus?.marked]);
 
-  // ── Initial data fetch — both calls start in parallel ────────────────────
   useEffect(() => {
     fetchEntries();
     fetchCurrentIncentive();
   }, [fetchEntries, fetchCurrentIncentive]);
 
-  // Only fetch attendance once profile is fully set up
   useEffect(() => {
     if (user?.profileComplete) fetchAttStatus();
   }, [user?.profileComplete, fetchAttStatus]);
@@ -1138,11 +1059,46 @@ export default function TechnicianDashboard() {
     fetchCurrentIncentive();
   }, [fetchEntries, fetchCurrentIncentive]);
 
-  const handleOpenForm = useCallback(() => setShowForm(true),  []);
+  const handleOpenForm  = useCallback(() => setShowForm(true),  []);
   const handleCloseForm = useCallback(() => setShowForm(false), []);
 
-  // ── Derived stats — memoized so they only recompute when entries changes ──
-  // Previously recomputed on EVERY render including attStatus flips
+  const handleOpenEdit = useCallback((entry) => {
+    setEditError("");
+    setEditingEntry(entry);
+  }, []);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditingEntry(null);
+    setEditError("");
+  }, []);
+
+  const handleSaveEdit = useCallback(async (formData) => {
+    if (editSaving || !editingEntry) return;
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const res = await api.put(`/api/entries/${editingEntry._id}`, {
+        date:         formData.date,
+        category:     formData.category,
+        vehicleNo:    formData.vehicleNo,
+        jcNo:         formData.jcNo,
+        hoursWorked:  Number(formData.hoursWorked),
+        labourAmount: Number(formData.labourAmount),
+        leaveDays:    Number(formData.leaveDays),
+      });
+      setEntries((prev) =>
+        prev.map((e) => (e._id === editingEntry._id ? res.data.entry : e))
+      );
+      fetchCurrentIncentive();
+      setEditingEntry(null);
+    } catch (err) {
+      setEditError(err.response?.data?.message || "Failed to update. Please try again.");
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editSaving, editingEntry, fetchCurrentIncentive]);
+
+  // ── Derived stats ─────────────────────────────────────────────────────────
   const thisMonthEntries = useMemo(() =>
     entries.filter((e) => {
       const d = new Date(e.date);
@@ -1167,14 +1123,10 @@ export default function TechnicianDashboard() {
 
   const needsProfile = user?.role === "technician" && !user?.profileComplete;
   const needsType    = user?.role === "technician" && user?.profileComplete && !user?.technicianType;
-
-  // Entry is allowed only when attendance is marked AND profile/type setup is done
   const entryAllowed = attStatus?.marked === true && !needsType;
+  const isGated      = user?.profileComplete && attStatus?.marked !== true;
 
   const currentMonthLabel = `${MONTH_NAMES[NOW.getMonth()]} ${NOW.getFullYear()}`;
-
-  // Locked when: profile complete but attendance not yet marked (or still loading)
-  const isGated = user?.profileComplete && attStatus?.marked !== true;
 
   return (
     <div className="td-page">
@@ -1204,7 +1156,6 @@ export default function TechnicianDashboard() {
       {/* ── Content ── */}
       <div style={{ padding: "0 0 100px", maxWidth: "600px", margin: "0 auto" }}>
 
-        {/* ── Attendance card — always visible, profile must be complete ── */}
         {!needsProfile && (
           <AttendanceCard
             attStatus={attStatus}
@@ -1213,13 +1164,6 @@ export default function TechnicianDashboard() {
           />
         )}
 
-        {/*
-          ── Gate wrapper ──
-          Everything below is visible but overlaid with a semi-transparent
-          grey layer when attendance hasn't been marked yet.
-          pointer-events on the overlay blocks all interaction.
-          With optimistic update, this lifts instantly on toggle click.
-        */}
         <div className="td-gate-wrap">
           {isGated && <div className="td-gate-overlay" />}
 
@@ -1261,7 +1205,7 @@ export default function TechnicianDashboard() {
             <IncentiveDropdown />
           </div>
 
-          {/* ── Work entries section — full history ── */}
+          {/* ── Work entries section ── */}
           <div className="td-section td-a5">
             <div className="td-section-header">
               <span className="td-section-label">All Work Entries</span>
@@ -1270,13 +1214,17 @@ export default function TechnicianDashboard() {
             {loading ? (
               <div className="td-loading">Loading…</div>
             ) : (
-              <EntryTable entries={entries} onDeleted={fetchEntries} />
+              <EntryTable
+                entries={entries}
+                onDeleted={fetchEntries}
+                onEdit={handleOpenEdit}
+              />
             )}
           </div>
         </div>
       </div>
 
-      {/* ── FAB — disabled until attendance marked ── */}
+      {/* ── FAB ── */}
       <button
         className="td-fab"
         onClick={() => entryAllowed && handleOpenForm()}
@@ -1286,9 +1234,19 @@ export default function TechnicianDashboard() {
         +
       </button>
 
+      {/* ── New entry form modal ── */}
       {showForm && (
         <EntryForm onClose={handleCloseForm} onSaved={handleSaved} />
       )}
+
+      {/* ── Edit entry modal ── */}
+      <EditEntryModal
+        entry={editingEntry}
+        onSave={handleSaveEdit}
+        onClose={handleCloseEdit}
+        saving={editSaving}
+        error={editError}
+      />
     </div>
   );
 }
