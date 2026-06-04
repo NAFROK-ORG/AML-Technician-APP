@@ -6,6 +6,11 @@ import {
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import { useAuthStore } from "../store/authStore";
+// FIX Bug 7: Import BRANCHES from the single source of truth.
+// Previously this file defined its own local BRANCHES constant, which could
+// silently drift out of sync with constants.js whenever a branch was added.
+// Now AdminAnalytics + AdminAttendance + any future page all share one definition.
+import { BRANCHES } from "../utils/constants";
 
 /* ─── Corporate light tokens ─────────────────────────────────────── */
 const C = {
@@ -26,7 +31,7 @@ const C = {
 };
 
 /* ─── Constants ──────────────────────────────────────────────────── */
-const BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
+// BRANCHES is now imported from ../utils/constants — removed local definition
 
 const CATEGORY_COLORS = {
   "ENGINE REPAIR":    "#2563EB",
@@ -419,7 +424,7 @@ export default function AdminAnalytics() {
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  /* ── CSV export ── (logic unchanged) */
+  /* ── CSV export ── */
   const exportCSV = () => {
     if (!data) return;
     const rows = [["Section","Dimension","Labour (₹)","Hours","Entries","Incentives (₹)","Leave Days"]];
@@ -840,7 +845,6 @@ export default function AdminAnalytics() {
                             ? `1px solid ${C.borderL}` : "none",
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                            {/* Rank badge */}
                             <div style={{
                               width: "22px", height: "22px", flexShrink: 0,
                               background: rankColor ? `${rankColor}18` : C.cardAlt,
@@ -879,7 +883,6 @@ export default function AdminAnalytics() {
                             </div>
                           </div>
 
-                          {/* Progress bar */}
                           <div style={{ height: "3px", background: C.border, overflow: "hidden" }}>
                             <div style={{
                               height: "100%", width: `${pct}%`,
