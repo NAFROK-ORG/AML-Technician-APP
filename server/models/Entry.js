@@ -24,13 +24,13 @@ const entrySchema = new mongoose.Schema(
       enum:    [null, ...TECHNICIAN_TYPES],
       default: null,
       // Copied from User.technicianType at entry creation — never from req.body.
-      // Old entries: null after migration, backfilled when user selects their type.
-      // New entries: always a real value — createEntry blocks if user.technicianType is null.
     },
     date: {
       type:     Date,
       required: [true, "Date is required"],
       default:  Date.now,
+      // Always set server-side in createEntry (new Date()).
+      // Never accepted from req.body — prevents backdating and forward-dating.
     },
     category: {
       type:     String,
@@ -58,22 +58,31 @@ const entrySchema = new mongoose.Schema(
       required: [true, "JC Number is required"],
       trim:     true,
     },
+    // FIX Bug 8: Added max validators to all three numeric fields.
+    // Without these, a technician could submit hoursWorked: 9999 and instantly
+    // vault to Slab 3, or leaveDays: 100 and zero out their entire incentive.
+    // These schema validators fire for ALL write paths (create + findByIdAndUpdate
+    // with runValidators: true), providing a consistent safety net at the DB layer
+    // in addition to the controller-level bounds checks in entryController.js.
     labourAmount: {
       type:     Number,
       required: true,
-      min:      0,
+      min:      [0,      "Labour amount cannot be negative"],
+      max:      [100000, "Labour amount cannot exceed ₹1,00,000 per entry"],
       default:  0,
     },
     hoursWorked: {
       type:     Number,
       required: true,
-      min:      0,
+      min:      [0,  "Hours worked cannot be negative"],
+      max:      [24, "Hours worked cannot exceed 24 per entry"],
       default:  0,
     },
     leaveDays: {
       type:     Number,
       required: true,
-      min:      0,
+      min:      [0,  "Leave days cannot be negative"],
+      max:      [31, "Leave days cannot exceed 31 per entry"],
       default:  0,
     },
     incentive: {
@@ -87,6 +96,6 @@ const entrySchema = new mongoose.Schema(
 
 entrySchema.index({ branch: 1 });
 entrySchema.index({ userId: 1 });
-entrySchema.index({ technicianType: 1 }); // admin type-filter queries
+entrySchema.index({ technicianType: 1 });
 
 module.exports = mongoose.model("Entry", entrySchema);
