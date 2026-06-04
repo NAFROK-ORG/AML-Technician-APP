@@ -34,6 +34,60 @@ const INJECTED = `
   .ab-a3 { animation: abFadeUp 0.3s ease both 0.12s; }
   .ab-a4 { animation: abFadeUp 0.3s ease both 0.18s; }
 
+  @keyframes nafrokScan {
+    0%   { width: 0%; opacity: 1; }
+    80%  { width: 100%; opacity: 1; }
+    100% { width: 100%; opacity: 0; }
+  }
+  @keyframes nafrokPulse {
+    0%, 100% { opacity: 0.4; }
+    50%       { opacity: 1; }
+  }
+
+  .ab-nafrok-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 0;
+    gap: 18px;
+  }
+  .ab-nafrok-wordmark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: nafrokPulse 1.6s ease-in-out infinite;
+  }
+  .ab-nafrok-dot {
+    width: 5px;
+    height: 5px;
+    background: #1E3A8A;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ab-nafrok-text {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #1E3A8A;
+  }
+  .ab-nafrok-track {
+    width: 120px;
+    height: 1px;
+    background: #DDE3EE;
+    overflow: hidden;
+    position: relative;
+  }
+  .ab-nafrok-bar {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    background: #1E3A8A;
+    animation: nafrokScan 1.4s ease-in-out infinite;
+  }
+
   .ab-branch-pill {
     padding: 8px 20px;
     border: 1px solid #DDE3EE;
@@ -86,7 +140,7 @@ const INJECTED = `
   }
 `;
 
-/* ─── Category accent colors for light bg ────────────────────────── */
+/* ─── Category accent colors ─────────────────────────────────────── */
 const CAT = {
   "ENGINE REPAIR":    { bar: "#2563EB", text: "#1E40AF" },
   "GEAR BOX":         { bar: "#DC2626", text: "#B91C1C" },
@@ -110,6 +164,33 @@ const STATS = [
   { key: "totalIncentives",       label: "Incentives Paid",   unit: "",        accent: "#B45309" },
   { key: "totalLeaveDays",        label: "Leave Days",        unit: "days",    accent: C.muted   },
 ];
+
+/* ─── Month helpers ──────────────────────────────────────────────── */
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+/**
+ * currentMonthParam()
+ * Returns current month as "YYYY-MM" string using local time.
+ * Sent to the backend as ?month=YYYY-MM — backend builds the UTC
+ * date range for the full calendar month from this.
+ */
+const currentMonthParam = () => {
+  const now = new Date();
+  const y   = now.getFullYear();
+  const m   = String(now.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+};
+
+/**
+ * monthLabel("2025-06") → "June 2025"
+ */
+const monthLabel = (param) => {
+  const [y, m] = param.split("-").map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+};
 
 /* ─── Stat card ──────────────────────────────────────────────────── */
 function StatCard({ label, value, unit, accent }) {
@@ -141,12 +222,38 @@ function StatCard({ label, value, unit, accent }) {
   );
 }
 
+/* ─── NAFROK loader ──────────────────────────────────────────────── */
+function NafrokLoader({ label }) {
+  return (
+    <div className="ab-nafrok-loader">
+      <div className="ab-nafrok-wordmark">
+        <div className="ab-nafrok-dot" />
+        <span className="ab-nafrok-text">Powered by NAFROK</span>
+        <div className="ab-nafrok-dot" />
+      </div>
+      <div className="ab-nafrok-track">
+        <div className="ab-nafrok-bar" />
+      </div>
+      {label && (
+        <div style={{
+          fontFamily: "'IBM Plex Sans', sans-serif",
+          fontSize: "9px", fontWeight: "600", letterSpacing: "0.18em",
+          textTransform: "uppercase", color: C.dim,
+        }}>{label}</div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Format helpers ─────────────────────────────────────────────── */
 const fmtStat = (key, v) => {
   if (key === "totalLabour" || key === "totalIncentives")
     return `₹${Number(v).toLocaleString("en-IN")}`;
   return Number(v).toLocaleString("en-IN");
 };
+
+/* ─── Session key for persisting selected branch ─────────────────── */
+const BRANCH_KEY = "aml_selected_branch";
 
 /* ─── Main ───────────────────────────────────────────────────────── */
 export default function AdminBranchDashboard() {
@@ -156,11 +263,27 @@ export default function AdminBranchDashboard() {
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
+  /* Current month param — computed once on mount, stable for the session.
+     A new calendar month always means a fresh page load anyway. */
+  const [monthParam] = useState(currentMonthParam);
+
   const [branches, setBranches] = useState([]);
-  const [selected, setSelected] = useState(isBranchAdmin ? (user?.branch || "") : "");
+
+  /* Restore last selected branch from sessionStorage on mount */
+  const [selected, setSelected] = useState(() => {
+    if (isBranchAdmin) return user?.branch || "";
+    return sessionStorage.getItem(BRANCH_KEY) || "";
+  });
+
   const [stats,    setStats]    = useState(null);
   const [loadingB, setLoadingB] = useState(isSuperAdmin);
   const [loadingS, setLoadingS] = useState(false);
+
+  /* Persist branch selection so navigating back restores it */
+  const handleSelectBranch = (b) => {
+    sessionStorage.setItem(BRANCH_KEY, b);
+    setSelected(b);
+  };
 
   /* inject styles */
   useEffect(() => {
@@ -177,20 +300,33 @@ export default function AdminBranchDashboard() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     api.get("/api/admin/branches")
-      .then(r => { setBranches(r.data); if (r.data.length) setSelected(r.data[0]); })
+      .then(r => {
+        setBranches(r.data);
+        const stored = sessionStorage.getItem(BRANCH_KEY);
+        if (stored && r.data.includes(stored)) {
+          /* restore previously selected branch */
+          setSelected(stored);
+        } else if (r.data.length) {
+          /* fallback to first branch and persist it */
+          sessionStorage.setItem(BRANCH_KEY, r.data[0]);
+          setSelected(r.data[0]);
+        }
+      })
       .catch(console.error)
       .finally(() => setLoadingB(false));
   }, [isSuperAdmin]);
 
-  /* fetch stats for selected branch */
+  /* fetch stats — scoped to current calendar month via ?month=YYYY-MM */
   useEffect(() => {
     if (!selected) return;
     setLoadingS(true); setStats(null);
-    api.get(`/api/admin/branch/${encodeURIComponent(selected)}`)
+    api.get(`/api/admin/branch/${encodeURIComponent(selected)}`, {
+      params: { month: monthParam },
+    })
       .then(r => setStats(r.data))
       .catch(console.error)
       .finally(() => setLoadingS(false));
-  }, [selected]);
+  }, [selected, monthParam]);
 
   return (
     <div style={{
@@ -247,10 +383,7 @@ export default function AdminBranchDashboard() {
         {isSuperAdmin && (
           <div className="ab-a2">
             {loadingB ? (
-              <p style={{
-                fontSize: "10px", letterSpacing: "0.18em", color: C.dim,
-                textTransform: "uppercase", fontWeight: "700",
-              }}>Loading branches…</p>
+              <NafrokLoader label="Fetching branches…" />
             ) : branches.length === 0 ? (
               <div style={{
                 background: C.card, border: `1px solid ${C.border}`,
@@ -268,7 +401,7 @@ export default function AdminBranchDashboard() {
                   {branches.map(b => (
                     <button
                       key={b}
-                      onClick={() => setSelected(b)}
+                      onClick={() => handleSelectBranch(b)}
                       className={`ab-branch-pill${selected === b ? " active" : ""}`}
                     >{b}</button>
                   ))}
@@ -304,13 +437,7 @@ export default function AdminBranchDashboard() {
         {/* ── Stats section ── */}
         {selected && (
           loadingS ? (
-            <div style={{ textAlign: "center", padding: "80px 0" }}>
-              <div style={{ width: "1px", height: "32px", background: C.navy, margin: "0 auto 16px", opacity: 0.4 }} />
-              <p style={{
-                fontSize: "10px", letterSpacing: "0.18em", textTransform: "uppercase",
-                fontWeight: "700", color: C.dim,
-              }}>Loading {selected}…</p>
-            </div>
+            <NafrokLoader label={`Loading ${selected}…`} />
           ) : stats ? (
             <>
               {/* Action row */}
@@ -324,7 +451,8 @@ export default function AdminBranchDashboard() {
                   textTransform: "uppercase", color: C.dim,
                 }}>
                   <div style={{ width: "3px", height: "14px", background: C.navy, flexShrink: 0 }} />
-                  Performance Metrics · {selected}
+                  {/* Month clearly labelled so admins always know the scope */}
+                  Performance Metrics · {selected} · {monthLabel(monthParam)}
                 </div>
                 <button
                   className="ab-view-btn"
