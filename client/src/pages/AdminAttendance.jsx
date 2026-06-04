@@ -5,7 +5,7 @@ import api                                          from "../api/axios";
 import { useAuthStore }                             from "../store/authStore";
 import { BRANCHES }                                 from "../utils/constants";
 
-// ─── Design tokens — identical to other admin pages ──────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   pageBg:  "#EEF2F7",
   card:    "#FFFFFF",
@@ -24,7 +24,6 @@ const C = {
   purple:  "#7C3AED",
 };
 
-// ─── Type badge styles — mirrors AdminTechnicianList ─────────────────────────
 const TYPE_STYLE = {
   "MECHANIC":           { color: "#1E3A8A", bg: "#EEF2F7", border: "#BFDBFE" },
   "MECHANIC HELPER":    { color: "#0369A1", bg: "#E0F2FE", border: "#BAE6FD" },
@@ -33,34 +32,25 @@ const TYPE_STYLE = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** YYYY-MM-DD in local time — used for the date input and ?date= param */
 function toLocalDateStr(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-
-/** Friendly display label for the date picker value */
 function fmtDisplayDate(dateStr) {
-  // Parse as local midnight so the displayed date matches what the user picked
   const [y, mo, d] = dateStr.split("-").map(Number);
   const dt = new Date(y, mo - 1, d);
   return dt.toLocaleDateString("en-IN", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   }).toUpperCase();
 }
-
-/** HH:MM AM/PM from ISO string */
 function fmtTime(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-IN", {
     hour: "2-digit", minute: "2-digit", hour12: true,
   });
 }
-
-/** Compact money formatter */
 function fmtMoney(n) {
   if (!n || n === 0) return "₹0";
   if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
@@ -116,7 +106,7 @@ const INJECTED = `
   /* ── Filter pills ── */
   .aa-filter-strip {
     display: flex; gap: 6px; overflow-x: auto;
-    padding-bottom: 4px; margin-bottom: 16px;
+    padding-bottom: 4px; margin-bottom: 8px;
     scrollbar-width: none; -ms-overflow-style: none;
   }
   .aa-filter-strip::-webkit-scrollbar { display: none; }
@@ -139,6 +129,27 @@ const INJECTED = `
   .aa-filter-pill.absent-pill              { border-color: #FECACA; color: #DC2626; background: #FEF2F2; }
   .aa-filter-pill.absent-pill:hover        { border-color: #DC2626; }
   .aa-filter-pill.absent-pill.active       { background: #DC2626; border-color: #DC2626; color: #FFFFFF; }
+
+  /* ── Sort controls ── */
+  .aa-sort-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .aa-sort-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; color: #94A3B8; white-space: nowrap;
+    margin-right: 2px;
+  }
+  .aa-sort-btn {
+    padding: 5px 10px; border: 1.5px solid #DDE3EE; background: #F8FAFC;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #6B7A99; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif; border-radius: 0;
+    transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+  }
+  .aa-sort-btn.active { background: #0A1628; border-color: #0A1628; color: #FFFFFF; }
+  .aa-sort-btn:hover:not(.active) { border-color: #374151; color: #374151; }
 
   /* ── Branch pills (superadmin) ── */
   .aa-branch-strip {
@@ -194,7 +205,42 @@ const INJECTED = `
   .aa-tech-card.present { border-left-color: #16A34A; }
   .aa-tech-card.absent  { border-left-color: #DC2626; }
 
-  /* ── Entry expand button ── */
+  /* ── Card inner — responsive padding ── */
+  .aa-card-inner {
+    padding: 16px 18px;
+    display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 12px;
+  }
+
+  /* ── Tech name — responsive size ── */
+  .aa-tech-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px; font-weight: 700; color: #0A1628;
+    letterSpacing: 0.03em; line-height: 1;
+  }
+
+  /* ── Entry count tile — responsive ── */
+  .aa-entry-tile {
+    background: #EEF2F7; border: 1px solid #DDE3EE;
+    padding: 8px 12px; text-align: center; min-width: 52px;
+  }
+  .aa-entry-tile.empty { background: #F8FAFC; }
+  .aa-entry-count {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px; font-weight: 700; line-height: 1;
+  }
+  .aa-entry-unit {
+    font-size: 7px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #94A3B8; margin-top: 2px;
+  }
+
+  /* ── Meta chips row ── */
+  .aa-chips-row {
+    display: flex; align-items: center;
+    gap: 5px; flex-wrap: wrap;
+  }
+
+  /* ── Expand button ── */
   .aa-expand-btn {
     background: none; border: 1.5px solid #DDE3EE;
     padding: 5px 10px; cursor: pointer;
@@ -237,7 +283,7 @@ const INJECTED = `
   }
   .aa-today-btn:hover { background: #1E3A8A; color: #FFFFFF; }
 
-  /* ── Refresh button (past dates) ── */
+  /* ── Refresh button ── */
   .aa-refresh-btn {
     background: none; border: 1.5px solid #DDE3EE;
     color: #6B7A99; font-family: 'IBM Plex Sans', sans-serif;
@@ -248,19 +294,29 @@ const INJECTED = `
   }
   .aa-refresh-btn:hover { border-color: #1E3A8A; color: #1E3A8A; }
 
-  /* ── Responsive ── */
+  /* ── Mobile: compact cards, keep row layout ── */
   @media (max-width: 480px) {
-    .aa-kpi-strip { grid-template-columns: repeat(2, 1fr); }
-    .aa-card-main { flex-direction: column !important; gap: 12px !important; }
-    .aa-card-right { flex-direction: row !important; align-items: center !important; }
+    .aa-kpi-strip          { grid-template-columns: repeat(2, 1fr); }
+    .aa-card-inner         { padding: 12px 14px; gap: 10px; }
+    .aa-tech-name          { font-size: 17px; }
+    .aa-entry-tile         { min-width: 42px; padding: 6px 8px; }
+    .aa-entry-count        { font-size: 18px; }
+    .aa-chips-row          { gap: 4px; }
+  }
+
+  /* ── Very small screens ── */
+  @media (max-width: 360px) {
+    .aa-card-inner  { padding: 10px 12px; }
+    .aa-tech-name   { font-size: 15px; }
+    .aa-entry-tile  { min-width: 38px; padding: 5px 6px; }
+    .aa-entry-count { font-size: 16px; }
   }
 `;
 
 // ─── Main component ───────────────────────────────────────────────────────────
-
 export default function AdminAttendance() {
-  const { user }   = useAuthStore();
-  const navigate   = useNavigate();
+  const { user }  = useAuthStore();
+  const navigate  = useNavigate();
 
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
@@ -268,16 +324,17 @@ export default function AdminAttendance() {
   const todayStr = toLocalDateStr(new Date());
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [data,          setData]          = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [error,         setError]         = useState("");
-  const [selectedDate,  setSelectedDate]  = useState(todayStr);
-  const [branch,        setBranch]        = useState(null);   // superadmin filter; null = all
-  const [statusFilter,  setStatusFilter]  = useState("ALL"); // ALL | PRESENT | ABSENT
-  const [search,        setSearch]        = useState("");
-  const [expandedIds,   setExpandedIds]   = useState(new Set());
-  const [lastUpdated,   setLastUpdated]   = useState(null);
-  const [isPolling,     setIsPolling]     = useState(false);
+  const [data,         setData]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [branch,       setBranch]       = useState(null);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [sortBy,       setSortBy]       = useState("alpha");   // "alpha" | "first-in"
+  const [search,       setSearch]       = useState("");
+  const [expandedIds,  setExpandedIds]  = useState(new Set());
+  const [lastUpdated,  setLastUpdated]  = useState(null);
+  const [isPolling,    setIsPolling]    = useState(false);
 
   const intervalRef = useRef(null);
   const isToday     = selectedDate === todayStr;
@@ -298,8 +355,6 @@ export default function AdminAttendance() {
   }, []);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
-  // silent=true → background poll (no spinner, no error wipe)
-  // silent=false → full load (spinner shown, error cleared)
   const fetchAttendance = useCallback(
     async (silent = false) => {
       if (!silent) { setLoading(true); setError(""); }
@@ -307,8 +362,6 @@ export default function AdminAttendance() {
 
       try {
         const params = new URLSearchParams({ date: selectedDate });
-        // Branch admin: server ignores ?branch — it's forced via branchGuard + JWT.
-        // Superadmin: send if user chose a specific branch.
         if (isSuperAdmin && branch) params.set("branch", branch);
 
         const res = await api.get(`/api/attendance/admin?${params.toString()}`);
@@ -322,7 +375,6 @@ export default function AdminAttendance() {
             setError("Failed to load attendance data. Please try again.");
           }
         }
-        // Silent poll failures are swallowed — stale data stays visible.
       } finally {
         if (!silent) setLoading(false);
         else setIsPolling(false);
@@ -334,8 +386,6 @@ export default function AdminAttendance() {
   // ── Initial load + 30-second poll (today only) ────────────────────────────
   useEffect(() => {
     fetchAttendance(false);
-
-    // Reset expanded rows when date/branch changes
     setExpandedIds(new Set());
 
     if (isToday) {
@@ -353,14 +403,12 @@ export default function AdminAttendance() {
     ? Math.round((presentList.length / data.length) * 100)
     : 0;
 
-  // Filter by status pill
   const afterStatus = data.filter(d => {
     if (statusFilter === "PRESENT") return d.status === "present";
     if (statusFilter === "ABSENT")  return d.status === "absent";
     return true;
   });
 
-  // Filter by search
   const filtered = afterStatus.filter(d => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -371,9 +419,21 @@ export default function AdminAttendance() {
     );
   });
 
-  // Sort: present first, then alphabetical within each group
+  // ── Sort: alpha (present first → A-Z) or first-in (present → by markedAt asc) ──
   const sorted = [...filtered].sort((a, b) => {
+    // Always present before absent
     if (a.status !== b.status) return a.status === "present" ? -1 : 1;
+
+    if (sortBy === "first-in") {
+      // Among present: earliest markedAt first
+      if (a.status === "present" && b.status === "present") {
+        const ta = a.markedAt ? new Date(a.markedAt).getTime() : Infinity;
+        const tb = b.markedAt ? new Date(b.markedAt).getTime() : Infinity;
+        return ta - tb;
+      }
+    }
+
+    // Default / absent: alphabetical by name
     return (a.technician?.name || "").localeCompare(b.technician?.name || "");
   });
 
@@ -392,9 +452,7 @@ export default function AdminAttendance() {
     setSearch("");
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100dvh",
@@ -408,16 +466,12 @@ export default function AdminAttendance() {
 
         {/* ── Page header ── */}
         <div className="aa-a1" style={{ marginBottom: "24px", paddingBottom: "20px", borderBottom: `1px solid ${C.border}` }}>
-
-          {/* Eyebrow */}
           <div style={{
             fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
             textTransform: "uppercase", color: C.navy, marginBottom: "4px",
           }}>
             {isBranchAdmin ? `${user.branch} · ` : ""}Attendance
           </div>
-
-          {/* Title — selected date */}
           <h1 style={{
             fontFamily: "'Barlow Condensed', sans-serif",
             fontSize: "clamp(24px, 6vw, 36px)", fontWeight: "700", color: C.ink,
@@ -427,7 +481,6 @@ export default function AdminAttendance() {
             {fmtDisplayDate(selectedDate)}
           </h1>
 
-          {/* Controls row: date picker + today button + live indicator */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <input
               type="date"
@@ -436,8 +489,6 @@ export default function AdminAttendance() {
               max={todayStr}
               onChange={handleDateChange}
             />
-
-            {/* "Today" shortcut — visible when not on today */}
             {!isToday && (
               <button
                 className="aa-today-btn"
@@ -446,32 +497,22 @@ export default function AdminAttendance() {
                 Today
               </button>
             )}
-
-            {/* Manual refresh for past dates */}
             {!isToday && !loading && (
               <button className="aa-refresh-btn" onClick={() => fetchAttendance(false)}>
                 ↺ Refresh
               </button>
             )}
-
-            {/* Live pill — today only */}
             {isToday && (
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
-                {isPolling
-                  ? <div className="aa-spin" />
-                  : <div className="aa-live-dot" />
-                }
+                {isPolling ? <div className="aa-spin" /> : <div className="aa-live-dot" />}
                 <span style={{
                   fontSize: "9px", fontWeight: "700",
-                  letterSpacing: "0.12em", textTransform: "uppercase",
-                  color: C.muted,
+                  letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted,
                 }}>
                   {isPolling ? "Refreshing…" : "Live · 30s"}
                 </span>
               </div>
             )}
-
-            {/* Last updated */}
             {lastUpdated && !isPolling && (
               <span style={{
                 fontSize: "9px", color: C.dim, fontWeight: "500",
@@ -539,9 +580,9 @@ export default function AdminAttendance() {
         {!loading && !error && data.length > 0 && (
           <div className="aa-kpi-strip aa-a2">
             {[
-              { label: "Total",   value: data.length,          color: C.ink     },
-              { label: "Present", value: presentList.length,   color: C.success },
-              { label: "Absent",  value: absentList.length,    color: C.danger  },
+              { label: "Total",   value: data.length,        color: C.ink     },
+              { label: "Present", value: presentList.length, color: C.success },
+              { label: "Absent",  value: absentList.length,  color: C.danger  },
               {
                 label: "Rate",
                 value: `${rate}%`,
@@ -592,12 +633,30 @@ export default function AdminAttendance() {
           </div>
         )}
 
+        {/* ── Sort controls ── */}
+        {!loading && !error && data.length > 0 && (
+          <div className="aa-sort-row aa-a2">
+            <span className="aa-sort-label">Sort</span>
+            <button
+              className={`aa-sort-btn${sortBy === "alpha" ? " active" : ""}`}
+              onClick={() => setSortBy("alpha")}
+            >
+              A – Z
+            </button>
+            <button
+              className={`aa-sort-btn${sortBy === "first-in" ? " active" : ""}`}
+              onClick={() => setSortBy("first-in")}
+            >
+              ↑ First In
+            </button>
+          </div>
+        )}
+
         {/* ════════════════════════════════════════════════════════════════════
-            Content states: loading · error · empty · no-match · card list
+            Content states
             ════════════════════════════════════════════════════════════════════ */}
 
         {loading ? (
-          /* ── Loading spinner ── */
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{
               width: "28px", height: "28px",
@@ -612,7 +671,6 @@ export default function AdminAttendance() {
           </div>
 
         ) : error ? (
-          /* ── Error / access denied ── */
           <div style={{
             background: "#FEF2F2", border: "1px solid #FECACA",
             borderLeft: "3px solid #DC2626", padding: "24px",
@@ -642,7 +700,6 @@ export default function AdminAttendance() {
           </div>
 
         ) : data.length === 0 ? (
-          /* ── No technicians in branch ── */
           <div style={{
             background: C.card, border: `1px solid ${C.border}`,
             padding: "56px 20px", textAlign: "center",
@@ -659,7 +716,6 @@ export default function AdminAttendance() {
           </div>
 
         ) : sorted.length === 0 ? (
-          /* ── Filter produced no results ── */
           <div style={{
             background: C.card, border: `1px solid ${C.border}`,
             padding: "40px 20px", textAlign: "center",
@@ -684,43 +740,28 @@ export default function AdminAttendance() {
               const uid        = technician._id?.toString();
               const isPresent  = status === "present";
               const isExpanded = expandedIds.has(uid);
-              const typeStyle  = technician.technicianType
-                ? TYPE_STYLE[technician.technicianType]
-                : null;
+              const typeStyle  = technician.technicianType ? TYPE_STYLE[technician.technicianType] : null;
               const hasEntries = entriesCount > 0 && entries && entries.length > 0;
 
               return (
                 <div key={uid} className={`aa-tech-card ${isPresent ? "present" : "absent"}`}>
 
                   {/* ── Card main row ── */}
-                  <div
-                    className="aa-card-main"
-                    style={{
-                      padding: "18px 20px",
-                      display: "flex", justifyContent: "space-between",
-                      alignItems: "flex-start", gap: "12px",
-                    }}
-                  >
+                  <div className="aa-card-inner">
+
                     {/* Left — technician identity */}
                     <div style={{ flex: 1, minWidth: 0 }}>
 
                       {/* Name + status badge */}
                       <div style={{
                         display: "flex", alignItems: "center",
-                        gap: "10px", flexWrap: "wrap", marginBottom: "5px",
+                        gap: "8px", flexWrap: "wrap", marginBottom: "4px",
                       }}>
-                        <span style={{
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          fontSize: "22px", fontWeight: "700", color: C.ink,
-                          letterSpacing: "0.03em", lineHeight: 1,
-                        }}>
-                          {technician.name}
-                        </span>
-
+                        <span className="aa-tech-name">{technician.name}</span>
                         <span style={{
                           fontSize: "8px", fontWeight: "700",
                           letterSpacing: "0.14em", textTransform: "uppercase",
-                          padding: "3px 8px",
+                          padding: "2px 7px", flexShrink: 0,
                           color:      isPresent ? "#15803D" : "#991B1B",
                           background: isPresent ? "#DCFCE7" : "#FEF2F2",
                           border:     `1px solid ${isPresent ? "#86EFAC" : "#FECACA"}`,
@@ -730,40 +771,34 @@ export default function AdminAttendance() {
                       </div>
 
                       {/* Technician ID */}
-                      <div style={{ marginBottom: "8px" }}>
+                      <div style={{ marginBottom: "6px" }}>
                         <span style={{
                           fontFamily: "'IBM Plex Mono', monospace",
-                          fontSize: "11px", color: C.navy, fontWeight: "600",
-                          letterSpacing: "0.08em",
+                          fontSize: "11px", color: C.navy,
+                          fontWeight: "600", letterSpacing: "0.08em",
                         }}>
                           {technician.technicianId || <span style={{ color: C.dim }}>No ID set</span>}
                         </span>
                       </div>
 
-                      {/* Meta chips: branch · type · marked time */}
-                      <div style={{
-                        display: "flex", alignItems: "center",
-                        gap: "6px", flexWrap: "wrap",
-                      }}>
-
-                        {/* Branch — only show for superadmin (branch admin always same) */}
+                      {/* Meta chips */}
+                      <div className="aa-chips-row">
                         {isSuperAdmin && (
                           <span style={{
-                            fontSize: "9px", fontWeight: "700",
+                            fontSize: "8px", fontWeight: "700",
                             letterSpacing: "0.12em", textTransform: "uppercase",
                             color: C.muted, background: C.cardAlt,
-                            border: `1px solid ${C.border}`, padding: "2px 7px",
+                            border: `1px solid ${C.border}`, padding: "2px 6px",
                           }}>
                             {technician.branch}
                           </span>
                         )}
 
-                        {/* Technician type */}
                         {technician.technicianType && typeStyle ? (
                           <span style={{
                             fontSize: "8px", fontWeight: "700",
                             letterSpacing: "0.12em", textTransform: "uppercase",
-                            padding: "2px 7px",
+                            padding: "2px 6px",
                             color: typeStyle.color, background: typeStyle.bg,
                             border: `1px solid ${typeStyle.border}`,
                           }}>
@@ -773,7 +808,7 @@ export default function AdminAttendance() {
                           <span style={{
                             fontSize: "8px", fontWeight: "700",
                             letterSpacing: "0.12em", textTransform: "uppercase",
-                            padding: "2px 7px",
+                            padding: "2px 6px",
                             color: "#D97706", background: "#FEF3C7",
                             border: "1px solid #FDE68A",
                           }}>
@@ -781,7 +816,7 @@ export default function AdminAttendance() {
                           </span>
                         )}
 
-                        {/* Marked-at time for present technicians */}
+                        {/* Marked-at time */}
                         {isPresent && markedAt && (
                           <span style={{
                             fontSize: "10px", color: C.success,
@@ -793,40 +828,20 @@ export default function AdminAttendance() {
                       </div>
                     </div>
 
-                    {/* Right — entry count box + expand toggle */}
-                    <div
-                      className="aa-card-right"
-                      style={{
-                        display: "flex", flexDirection: "column",
-                        alignItems: "flex-end", gap: "8px",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {/* Entry count tile */}
-                      <div style={{
-                        background: entriesCount > 0 ? "#EEF2F7" : C.cardAlt,
-                        border: `1px solid ${C.border}`,
-                        padding: "8px 12px", textAlign: "center",
-                        minWidth: "52px",
-                      }}>
-                        <div style={{
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          fontSize: "22px", fontWeight: "700",
-                          color: entriesCount > 0 ? C.navy : C.dim,
-                          lineHeight: 1,
-                        }}>
+                    {/* Right — entry count + expand */}
+                    <div style={{
+                      display: "flex", flexDirection: "column",
+                      alignItems: "flex-end", gap: "7px", flexShrink: 0,
+                    }}>
+                      <div className={`aa-entry-tile${entriesCount === 0 ? " empty" : ""}`}>
+                        <div className="aa-entry-count" style={{ color: entriesCount > 0 ? C.navy : C.dim }}>
                           {entriesCount}
                         </div>
-                        <div style={{
-                          fontSize: "7px", fontWeight: "700",
-                          letterSpacing: "0.14em", textTransform: "uppercase",
-                          color: C.dim, marginTop: "2px",
-                        }}>
+                        <div className="aa-entry-unit">
                           {entriesCount === 1 ? "Entry" : "Entries"}
                         </div>
                       </div>
 
-                      {/* Expand toggle — only when entries exist */}
                       {hasEntries && (
                         <button
                           className="aa-expand-btn"
@@ -838,42 +853,35 @@ export default function AdminAttendance() {
                     </div>
                   </div>
 
-                  {/* ── Expanded entries section ── */}
+                  {/* ── Expanded entries ── */}
                   {isExpanded && hasEntries && (
                     <div style={{ borderTop: `1px solid ${C.border}` }}>
-
-                      {/* Sub-header */}
                       <div style={{
-                        padding: "8px 20px",
+                        padding: "8px 16px",
                         background: "#EEF2F7",
                         borderBottom: `1px solid ${C.border}`,
-                        display: "flex", justifyContent: "space-between",
-                        alignItems: "center",
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
                       }}>
                         <span style={{
                           fontSize: "8px", fontWeight: "700",
-                          letterSpacing: "0.18em", textTransform: "uppercase",
-                          color: C.muted,
+                          letterSpacing: "0.18em", textTransform: "uppercase", color: C.muted,
                         }}>
                           Job Cards — {entries.length}
                         </span>
                         <span style={{
                           fontSize: "8px", fontWeight: "700",
-                          letterSpacing: "0.16em", textTransform: "uppercase",
-                          color: C.navy,
+                          letterSpacing: "0.16em", textTransform: "uppercase", color: C.navy,
                         }}>
                           {fmtDisplayDate(selectedDate).split(",")[0]}
                         </span>
                       </div>
 
-                      {/* Entry rows */}
                       {entries.map((entry, idx) => (
                         <div
                           key={entry._id?.toString() || idx}
                           className="aa-entry-row"
                           style={{ background: idx % 2 === 0 ? C.card : C.cardAlt }}
                         >
-                          {/* Category + JC No + Vehicle */}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
                               fontFamily: "'IBM Plex Mono', monospace",
@@ -883,72 +891,41 @@ export default function AdminAttendance() {
                               {entry.jcNo}
                             </div>
                             <div style={{
-                              fontSize: "10px", fontWeight: "700",
-                              color: C.mid, letterSpacing: "0.06em",
-                              textTransform: "uppercase", marginBottom: "2px",
+                              fontSize: "10px", fontWeight: "700", color: C.mid,
+                              letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "2px",
                             }}>
                               {entry.category}
                             </div>
                             {entry.vehicleNo && (
-                              <div style={{
-                                fontSize: "10px", color: C.muted,
-                                letterSpacing: "0.02em",
-                              }}>
+                              <div style={{ fontSize: "10px", color: C.muted, letterSpacing: "0.02em" }}>
                                 {entry.vehicleNo}
                               </div>
                             )}
                           </div>
 
-                          {/* Numeric stats */}
-                          <div style={{
-                            display: "flex", gap: "14px",
-                            flexShrink: 0, alignItems: "center",
-                          }}>
+                          <div style={{ display: "flex", gap: "14px", flexShrink: 0, alignItems: "center" }}>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{
-                                fontFamily: "'IBM Plex Mono', monospace",
-                                fontSize: "13px", fontWeight: "700", color: C.success,
-                              }}>
+                              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: "700", color: C.success }}>
                                 {entry.hoursWorked}h
                               </div>
-                              <div style={{
-                                fontSize: "7px", fontWeight: "700",
-                                letterSpacing: "0.14em", textTransform: "uppercase",
-                                color: C.dim,
-                              }}>
+                              <div style={{ fontSize: "7px", fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: C.dim }}>
                                 Hours
                               </div>
                             </div>
-
                             <div style={{ textAlign: "right" }}>
-                              <div style={{
-                                fontFamily: "'IBM Plex Mono', monospace",
-                                fontSize: "13px", fontWeight: "700", color: C.amber,
-                              }}>
+                              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: "700", color: C.amber }}>
                                 {fmtMoney(entry.labourAmount)}
                               </div>
-                              <div style={{
-                                fontSize: "7px", fontWeight: "700",
-                                letterSpacing: "0.14em", textTransform: "uppercase",
-                                color: C.dim,
-                              }}>
+                              <div style={{ fontSize: "7px", fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: C.dim }}>
                                 Labour
                               </div>
                             </div>
-
                             {entry.leaveDays > 0 && (
                               <div style={{ textAlign: "right" }}>
-                                <div style={{
-                                  fontFamily: "'IBM Plex Mono', monospace",
-                                  fontSize: "13px", fontWeight: "700", color: C.danger,
-                                }}>
+                                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: "700", color: C.danger }}>
                                   {entry.leaveDays}d
                                 </div>
-                                <div style={{
-                                  fontSize: "7px", fontWeight: "700",
-                                  letterSpacing: "0.14em", textTransform: "uppercase",
-                                  color: C.dim,
-                                }}>
+                                <div style={{ fontSize: "7px", fontWeight: "700", letterSpacing: "0.14em", textTransform: "uppercase", color: C.dim }}>
                                   Leave
                                 </div>
                               </div>
@@ -957,33 +934,20 @@ export default function AdminAttendance() {
                         </div>
                       ))}
 
-                      {/* Day totals footer */}
                       {entries.length > 1 && (
                         <div style={{
-                          padding: "10px 20px",
-                          background: "#E4EBF8",
+                          padding: "10px 16px", background: "#E4EBF8",
                           borderTop: `1px solid ${C.border}`,
-                          display: "flex", justifyContent: "space-between",
-                          alignItems: "center",
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
                         }}>
-                          <span style={{
-                            fontSize: "8px", fontWeight: "700",
-                            letterSpacing: "0.16em", textTransform: "uppercase",
-                            color: C.muted,
-                          }}>
+                          <span style={{ fontSize: "8px", fontWeight: "700", letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>
                             Day Total
                           </span>
                           <div style={{ display: "flex", gap: "20px" }}>
-                            <span style={{
-                              fontFamily: "'IBM Plex Mono', monospace",
-                              fontSize: "12px", fontWeight: "700", color: C.success,
-                            }}>
+                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", fontWeight: "700", color: C.success }}>
                               {entries.reduce((s, e) => s + (e.hoursWorked || 0), 0)}h
                             </span>
-                            <span style={{
-                              fontFamily: "'IBM Plex Mono', monospace",
-                              fontSize: "12px", fontWeight: "700", color: C.amber,
-                            }}>
+                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", fontWeight: "700", color: C.amber }}>
                               {fmtMoney(entries.reduce((s, e) => s + (e.labourAmount || 0), 0))}
                             </span>
                           </div>
@@ -992,35 +956,19 @@ export default function AdminAttendance() {
                     </div>
                   )}
 
-                  {/* ── Present + no entries logged ── */}
+                  {/* Present + no entries */}
                   {isPresent && entriesCount === 0 && (
-                    <div style={{
-                      padding: "9px 20px",
-                      borderTop: `1px solid ${C.border}`,
-                      background: "#F0FDF4",
-                    }}>
-                      <span style={{
-                        fontSize: "9px", fontWeight: "600",
-                        letterSpacing: "0.1em", textTransform: "uppercase",
-                        color: "#15803D", opacity: 0.7,
-                      }}>
+                    <div style={{ padding: "8px 16px", borderTop: `1px solid ${C.border}`, background: "#F0FDF4" }}>
+                      <span style={{ fontSize: "9px", fontWeight: "600", letterSpacing: "0.1em", textTransform: "uppercase", color: "#15803D", opacity: 0.7 }}>
                         Present — No job cards logged today
                       </span>
                     </div>
                   )}
 
-                  {/* ── Absent footer note ── */}
+                  {/* Absent footer */}
                   {!isPresent && (
-                    <div style={{
-                      padding: "9px 20px",
-                      borderTop: `1px solid #FECACA`,
-                      background: "#FFF8F8",
-                    }}>
-                      <span style={{
-                        fontSize: "9px", fontWeight: "600",
-                        letterSpacing: "0.1em", textTransform: "uppercase",
-                        color: "#DC2626", opacity: 0.6,
-                      }}>
+                    <div style={{ padding: "8px 16px", borderTop: `1px solid #FECACA`, background: "#FFF8F8" }}>
+                      <span style={{ fontSize: "9px", fontWeight: "600", letterSpacing: "0.1em", textTransform: "uppercase", color: "#DC2626", opacity: 0.6 }}>
                         Did not mark attendance · No job cards
                       </span>
                     </div>
