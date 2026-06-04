@@ -40,7 +40,7 @@ const createEntry = async (req, res) => {
     // (curl, Postman, browser devtools) bypasses the frontend entirely.
     // This check enforces the attendance rule at the data layer regardless of
     // how the request arrives.
-    const today   = utcMidnight();
+    const today    = utcMidnight();
     const attended = await Attendance.findOne({ userId: req.user.userId, date: today });
     if (!attended) {
       return res.status(403).json({
@@ -127,6 +127,16 @@ const deleteEntry = async (req, res) => {
 };
 
 // ─── GET /api/entries/my/incentive?year=2026&month=5 ─────────────────────────
+//
+// CHANGED from original:
+//   1. User is now fetched (parallel with entries via Promise.all) to read
+//      technicianType — the authoritative source is the User record, not
+//      the entries, so this handles months with zero entries correctly too.
+//   2. technicianType is passed as the 4th arg to calculateIncentive so the
+//      correct tier (mechanic vs helper) and slab table is used.
+//
+// Everything else (date range, aggregation, response shape) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
 const getMonthlyIncentive = async (req, res) => {
   try {
     const now   = new Date();
@@ -139,16 +149,28 @@ const getMonthlyIncentive = async (req, res) => {
     const startDate = new Date(year, month - 1, 1);
     const endDate   = new Date(year, month,     1);
 
-    const entries = await Entry.find({
-      userId: req.user.userId,
-      date:   { $gte: startDate, $lt: endDate },
-    });
+    // Fetch entries and user in parallel — avoids two sequential round-trips.
+    const [entries, user] = await Promise.all([
+      Entry.find({
+        userId: req.user.userId,
+        date:   { $gte: startDate, $lt: endDate },
+      }),
+      User.findById(req.user.userId).select("technicianType"),
+    ]);
+
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     const totalHours  = entries.reduce((s, e) => s + (e.hoursWorked  || 0), 0);
     const totalLabour = entries.reduce((s, e) => s + (e.labourAmount || 0), 0);
     const totalLeave  = entries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
 
-    const breakdown = calculateIncentive(totalHours, totalLabour, totalLeave);
+    // Pass technicianType so the calculator uses the correct tier + slab table.
+    const breakdown = calculateIncentive(
+      totalHours,
+      totalLabour,
+      totalLeave,
+      user.technicianType   // ← the only new argument
+    );
 
     res.json({
       year,
@@ -163,5 +185,73 @@ const getMonthlyIncentive = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+// ─── PUT /api/entries/:id ─────────────────────────────────────────────────────
+// Technician edits their own submitted entry.
+// Security rules:
+//   - Ownership enforced: entry.userId must match req.user.userId (JWT)
+//   - Whitelist only: userId, branch, technicianType are NEVER read from req.body
+//   - Same numeric bounds validation as createEntry
+//   - Incentive is computed on demand (getMonthlyIncentive) — not stored per
+//     entry — so no recomputation is needed here. The next incentive fetch
+//     will automatically reflect the updated values.
+// ─────────────────────────────────────────────────────────────────────────────
+const editMyEntry = async (req, res) => {
+  try {
+    // 1. Find entry
+    const entry = await Entry.findById(req.params.id);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
 
-module.exports = { createEntry, getMyEntries, deleteEntry, getMonthlyIncentive };
+    // 2. Ownership check — only the technician who created it can edit it
+    if (String(entry.userId) !== String(req.user.userId)) {
+      return res.status(403).json({ message: "Not authorized to edit this entry" });
+    }
+
+    // 3. Extract only whitelisted fields from req.body
+    //    userId, branch, technicianType are intentionally excluded — always
+    //    sourced from DB / JWT, never from the request payload.
+    const { category, vehicleNo, jcNo, hoursWorked, labourAmount, leaveDays, date } = req.body;
+
+    // 4. Parse numerics — fall back to existing values if a field is not sent
+    const parsedHours  = hoursWorked  !== undefined ? Number(hoursWorked)  : entry.hoursWorked;
+    const parsedLabour = labourAmount !== undefined ? Number(labourAmount) : entry.labourAmount;
+    const parsedLeave  = leaveDays    !== undefined ? Number(leaveDays)    : entry.leaveDays;
+
+    // 5. Same bounds validation as createEntry — keeps both code paths in sync
+    if (parsedHours < 0 || parsedHours > 24) {
+      return res.status(400).json({ message: "hoursWorked must be between 0 and 24." });
+    }
+    if (parsedLabour < 0 || parsedLabour > 100000) {
+      return res.status(400).json({ message: "labourAmount must be between ₹0 and ₹1,00,000." });
+    }
+    if (parsedLeave < 0 || parsedLeave > 31) {
+      return res.status(400).json({ message: "leaveDays must be between 0 and 31." });
+    }
+
+    // 6. Validate jcNo is not being blanked out (it is required on the model)
+    if (jcNo !== undefined && !jcNo?.trim()) {
+      return res.status(400).json({ message: "Job Card No cannot be empty." });
+    }
+
+    // 7. Apply updates — only fields that were actually sent in the request
+    if (category  !== undefined) entry.category    = category;
+    if (vehicleNo !== undefined) entry.vehicleNo   = vehicleNo?.trim() || "";
+    if (jcNo      !== undefined) entry.jcNo        = jcNo.trim();
+    if (date      !== undefined) entry.date        = new Date(date);
+    entry.hoursWorked  = parsedHours;
+    entry.labourAmount = parsedLabour;
+    entry.leaveDays    = parsedLeave;
+
+    // 8. Save — Mongoose validators run on save (enum, required, etc.)
+    await entry.save();
+
+    res.json({ message: "Entry updated", entry });
+  } catch (err) {
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages.join(", ") });
+    }
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { createEntry, getMyEntries, deleteEntry, getMonthlyIncentive, editMyEntry };
