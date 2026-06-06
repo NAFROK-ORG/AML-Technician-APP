@@ -10,7 +10,8 @@ import AdminBranchDashboard from "./pages/AdminBranchDashboard";
 import AdminTechnicianList from "./pages/AdminTechnicianList";
 import AdminTechnicianDetail from "./pages/AdminTechnicianDetail";
 import AdminAnalytics from "./pages/AdminAnalytics";
-import AdminAttendance from "./pages/AdminAttendance"; // ← new
+import AdminAttendance from "./pages/AdminAttendance";
+import VehicleSearch from "./pages/VehicleSearch"; // ← new
 
 /**
  * GuestRoute — blocks /login and /signup for already-authenticated users.
@@ -100,6 +101,21 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/*
+          Vehicle Search — superadmin only.
+          Branch admins cannot access this route — ProtectedRoute redirects them.
+          role is a string (not array) intentionally: this is not shared with admin.
+        */}
+        <Route
+          path="/admin/vehicle-search"
+          element={
+            <ProtectedRoute role="superadmin">
+              <VehicleSearch />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/admin/branch/:branch"
           element={
