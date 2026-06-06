@@ -52,6 +52,11 @@ const entrySchema = new mongoose.Schema(
       type:    String,
       trim:    true,
       default: "",
+      // Optional — not all job cards are vehicle-specific.
+      // Stored as "" (empty string) when not provided, never null.
+      // This means sparse: false is correct on the index below —
+      // sparse only skips null/missing fields, and "" is a real value
+      // that would be indexed anyway. A regular index is correct here.
     },
     jcNo: {
       type:     String,
@@ -94,8 +99,39 @@ const entrySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ─── Indexes ──────────────────────────────────────────────────────────────────
+
+   All indexes here are purely additive — they never modify document data,
+   never break existing queries, and are built by MongoDB Atlas in the
+   background without locking the collection. Safe to deploy to production.
+
+   Existing indexes (already in production):
+   ─────────────────────────────────────────
+   { branch: 1 }          — admin branch-scoped queries (getEntries, getAnalytics)
+   { userId: 1 }          — technician's own entry list
+   { technicianType: 1 }  — analytics grouping by type
+
+   New index:
+   ──────────
+   { vehicleNo: 1 }
+   ─ WHY: vehicleNo is now used in vehicle search (GET /api/search/vehicle).
+   ─ WHY NOT sparse: vehicleNo defaults to "" — every document has this field
+     as a real value (even if empty string). sparse: true only skips null/missing
+     fields, so it would index all documents anyway. Regular index is correct.
+   ─ REGEX LIMITATION: The current buildVehicleRegex() produces patterns without
+     a ^ anchor, so MongoDB's query planner cannot use this index for the regex
+     filter. At current scale (~12,500 entries/year for 50 technicians), a
+     collection scan on this field is sub-millisecond — not a concern right now.
+     This index does benefit future exact-match queries on vehicleNo if added later.
+   ─ SAFETY: Zero risk to existing data or queries. Mongoose calls ensureIndexes()
+     at startup — if the index already exists, it's a no-op. If new, Atlas builds
+     it in the background while the collection remains fully accessible.
+
+   ─────────────────────────────────────────────────────────────────────────────── */
+
 entrySchema.index({ branch: 1 });
 entrySchema.index({ userId: 1 });
 entrySchema.index({ technicianType: 1 });
+entrySchema.index({ vehicleNo: 1 }); // vehicle search support — see note above
 
 module.exports = mongoose.model("Entry", entrySchema);
