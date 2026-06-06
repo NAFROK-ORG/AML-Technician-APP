@@ -16,6 +16,7 @@ export const BRANCHES = [
   "CHITRADURGA",
   "HOSPET",
   "RAICHUR",
+  "TORANAGALLU"
 ];
 
 // Single source of truth for technician sub-roles.
