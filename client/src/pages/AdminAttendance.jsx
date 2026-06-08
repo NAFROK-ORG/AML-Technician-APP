@@ -880,7 +880,7 @@ export default function AdminAttendance() {
                         <div
                           key={entry._id?.toString() || idx}
                           className="aa-entry-row"
-                          style={{ background: idx % 2 === 0 ? C.card : C.cardAlt }}
+                         style={{ background: idx % 2 === 0 ? "#E8EEF6" : "#DDE5F0" }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
@@ -896,11 +896,22 @@ export default function AdminAttendance() {
                             }}>
                               {entry.category}
                             </div>
-                            {entry.vehicleNo && (
-                              <div style={{ fontSize: "10px", color: C.muted, letterSpacing: "0.02em" }}>
-                                {entry.vehicleNo}
-                              </div>
-                            )}
+                          {entry.vehicleNo && (
+  <div style={{ fontSize: "10px", color: C.muted, letterSpacing: "0.02em" }}>
+    {entry.vehicleNo}
+  </div>
+)}
+{entry.createdAt && (
+  <div style={{
+    fontSize: "9px", fontWeight: "600",
+    letterSpacing: "0.08em", textTransform: "uppercase",
+    color: C.purple, marginTop: "3px",
+    display: "flex", alignItems: "center", gap: "3px",
+  }}>
+    <span style={{ opacity: 0.6 }}>⏱</span>
+    Logged {fmtTime(entry.createdAt)}
+  </div>
+)}
                           </div>
 
                           <div style={{ display: "flex", gap: "14px", flexShrink: 0, alignItems: "center" }}>

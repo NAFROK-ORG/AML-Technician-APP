@@ -128,7 +128,7 @@ exports.getAdminAttendance = async (req, res) => {
       userId: { $in: techIds },
       date:   { $gte: targetDate, $lt: nextDate },
     })
-      .select("userId category vehicleNo jcNo hoursWorked labourAmount leaveDays")
+    .select("userId category vehicleNo jcNo hoursWorked labourAmount leaveDays createdAt")
       .lean();
 
     const entryMap = {};
