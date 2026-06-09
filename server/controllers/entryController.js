@@ -1,12 +1,10 @@
 const Entry      = require("../models/Entry");
 const User       = require("../models/User");
-const Attendance = require("../models/Attendance"); // FIX Bug 1: needed for server-side attendance gate
-const { calculateIncentive } = require("../utils/incentiveCalculator");
+const Attendance = require("../models/Attendance");
+const { calculateIncentive }  = require("../utils/incentiveCalculator");
+const { normalizeVehicleNo }  = require("../utils/vehicleUtils"); // ← NEW
 
 // ─── Helper: UTC midnight ─────────────────────────────────────────────────────
-// Mirrors the identical helper in attendanceController so the date comparison
-// always hits the exact same bucket the Attendance document was stored under.
-// Both helpers must produce the same value for the same calendar day.
 function utcMidnight(input) {
   const d = input ? new Date(input) : new Date();
   d.setUTCHours(0, 0, 0, 0);
@@ -16,10 +14,6 @@ function utcMidnight(input) {
 // ─── POST /api/entries ────────────────────────────────────────────────────────
 const createEntry = async (req, res) => {
   try {
-    // FIX Bug 4: `date` is intentionally NOT read from req.body.
-    // Date is always assigned server-side (new Date()) so technicians cannot:
-    //   - Backdate entries to days their attendance was not marked
-    //   - Forward-date entries into a future quarter to game the incentive
     const { category, vehicleNo, jcNo, labourAmount, hoursWorked, leaveDays } = req.body;
 
     const user = await User.findById(req.user.userId);
@@ -28,18 +22,12 @@ const createEntry = async (req, res) => {
     if (!user.profileComplete)
       return res.status(400).json({ message: "Complete your profile first" });
 
-    // Guard: technicianType must be set before any entry can be logged.
-    // This is backend enforcement of the frontend freeze.
     if (!user.technicianType)
       return res.status(403).json({
         message: "Please select your technician type before logging entries.",
       });
 
-    // ── FIX Bug 1: Server-side attendance gate ────────────────────────────────
-    // The frontend overlay + disabled button is UX-only. Any direct API call
-    // (curl, Postman, browser devtools) bypasses the frontend entirely.
-    // This check enforces the attendance rule at the data layer regardless of
-    // how the request arrives.
+    // Server-side attendance gate
     const today    = utcMidnight();
     const attended = await Attendance.findOne({ userId: req.user.userId, date: today });
     if (!attended) {
@@ -48,42 +36,47 @@ const createEntry = async (req, res) => {
       });
     }
 
-    // ── FIX Bug 8: Numeric bounds validation ──────────────────────────────────
-    // Parse first, then validate. This prevents NaN surprises and catches
-    // obviously wrong values before they reach the DB or skew incentive
-    // calculations (e.g. hoursWorked: 9999 would instantly hit Slab 3).
+    // ── CHANGE: vehicleNo is now required for new entries ─────────────────────
+    // Old entries (no vehicleNo) are unaffected — this check only runs here,
+    // in the create path. Old documents in MongoDB are never touched.
+    // This is the intended behavior change: linking requires a vehicle number.
+    if (!vehicleNo || !vehicleNo.trim()) {
+      return res.status(400).json({ message: "Vehicle number is required" });
+    }
+
+    // ── CHANGE: compute vehicleNoNorm before saving ───────────────────────────
+    // normalizeVehicleNo strips hyphens/spaces and uppercases.
+    // "KA-01-AB-1234" → "KA01AB1234"
+    // This normalized value is what the SecurityLog linking algorithm queries.
+    const vehicleNoNorm = normalizeVehicleNo(vehicleNo);
+    // ─────────────────────────────────────────────────────────────────────────
+
     const parsedHours  = Number(hoursWorked)  || 0;
     const parsedLabour = Number(labourAmount) || 0;
     const parsedLeave  = Number(leaveDays)    || 0;
 
     if (parsedHours < 0 || parsedHours > 24) {
-      return res.status(400).json({
-        message: "hoursWorked must be between 0 and 24.",
-      });
+      return res.status(400).json({ message: "hoursWorked must be between 0 and 24." });
     }
     if (parsedLabour < 0 || parsedLabour > 100000) {
-      return res.status(400).json({
-        message: "labourAmount must be between ₹0 and ₹1,00,000.",
-      });
+      return res.status(400).json({ message: "labourAmount must be between ₹0 and ₹1,00,000." });
     }
     if (parsedLeave < 0 || parsedLeave > 31) {
-      return res.status(400).json({
-        message: "leaveDays must be between 0 and 31.",
-      });
+      return res.status(400).json({ message: "leaveDays must be between 0 and 31." });
     }
 
     const entry = await Entry.create({
       userId:         req.user.userId,
       branch:         user.branch,
-      technicianType: user.technicianType, // copied from user — never from req.body
-      date:           new Date(),           // FIX Bug 4: always server-side timestamp
+      technicianType: user.technicianType,
+      date:           new Date(),
       category,
-      vehicleNo:      vehicleNo?.trim() || "",
+      vehicleNo:      vehicleNo.trim(),
+      vehicleNoNorm,              // ← NEW — stored for linking algorithm
       jcNo:           jcNo?.trim(),
       labourAmount:   parsedLabour,
       hoursWorked:    parsedHours,
       leaveDays:      parsedLeave,
-      // incentive intentionally omitted — always computed server-side on demand
     });
 
     res.status(201).json(entry);
@@ -97,10 +90,6 @@ const createEntry = async (req, res) => {
 };
 
 // ─── GET /api/entries/my ──────────────────────────────────────────────────────
-// NOTE: This returns all entries for the technician without pagination.
-// The TechnicianDashboard relies on the full list for client-side monthly stat
-// computation (thisMonthEntries). Pagination here requires moving those stat
-// calculations to a dedicated server-side endpoint — deferred to a future task.
 const getMyEntries = async (req, res) => {
   try {
     const entries = await Entry.find({ userId: req.user.userId }).sort({ date: -1 });
@@ -126,17 +115,7 @@ const deleteEntry = async (req, res) => {
   }
 };
 
-// ─── GET /api/entries/my/incentive?year=2026&month=5 ─────────────────────────
-//
-// CHANGED from original:
-//   1. User is now fetched (parallel with entries via Promise.all) to read
-//      technicianType — the authoritative source is the User record, not
-//      the entries, so this handles months with zero entries correctly too.
-//   2. technicianType is passed as the 4th arg to calculateIncentive so the
-//      correct tier (mechanic vs helper) and slab table is used.
-//
-// Everything else (date range, aggregation, response shape) is unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── GET /api/entries/my/incentive ───────────────────────────────────────────
 const getMonthlyIncentive = async (req, res) => {
   try {
     const now   = new Date();
@@ -149,7 +128,6 @@ const getMonthlyIncentive = async (req, res) => {
     const startDate = new Date(year, month - 1, 1);
     const endDate   = new Date(year, month,     1);
 
-    // Fetch entries and user in parallel — avoids two sequential round-trips.
     const [entries, user] = await Promise.all([
       Entry.find({
         userId: req.user.userId,
@@ -164,12 +142,11 @@ const getMonthlyIncentive = async (req, res) => {
     const totalLabour = entries.reduce((s, e) => s + (e.labourAmount || 0), 0);
     const totalLeave  = entries.reduce((s, e) => s + (e.leaveDays    || 0), 0);
 
-    // Pass technicianType so the calculator uses the correct tier + slab table.
     const breakdown = calculateIncentive(
       totalHours,
       totalLabour,
       totalLeave,
-      user.technicianType   // ← the only new argument
+      user.technicianType
     );
 
     res.json({
@@ -185,38 +162,23 @@ const getMonthlyIncentive = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
 // ─── PUT /api/entries/:id ─────────────────────────────────────────────────────
-// Technician edits their own submitted entry.
-// Security rules:
-//   - Ownership enforced: entry.userId must match req.user.userId (JWT)
-//   - Whitelist only: userId, branch, technicianType are NEVER read from req.body
-//   - Same numeric bounds validation as createEntry
-//   - Incentive is computed on demand (getMonthlyIncentive) — not stored per
-//     entry — so no recomputation is needed here. The next incentive fetch
-//     will automatically reflect the updated values.
-// ─────────────────────────────────────────────────────────────────────────────
 const editMyEntry = async (req, res) => {
   try {
-    // 1. Find entry
     const entry = await Entry.findById(req.params.id);
     if (!entry) return res.status(404).json({ message: "Entry not found" });
 
-    // 2. Ownership check — only the technician who created it can edit it
     if (String(entry.userId) !== String(req.user.userId)) {
       return res.status(403).json({ message: "Not authorized to edit this entry" });
     }
 
-    // 3. Extract only whitelisted fields from req.body
-    //    userId, branch, technicianType are intentionally excluded — always
-    //    sourced from DB / JWT, never from the request payload.
     const { category, vehicleNo, jcNo, hoursWorked, labourAmount, leaveDays, date } = req.body;
 
-    // 4. Parse numerics — fall back to existing values if a field is not sent
     const parsedHours  = hoursWorked  !== undefined ? Number(hoursWorked)  : entry.hoursWorked;
     const parsedLabour = labourAmount !== undefined ? Number(labourAmount) : entry.labourAmount;
     const parsedLeave  = leaveDays    !== undefined ? Number(leaveDays)    : entry.leaveDays;
 
-    // 5. Same bounds validation as createEntry — keeps both code paths in sync
     if (parsedHours < 0 || parsedHours > 24) {
       return res.status(400).json({ message: "hoursWorked must be between 0 and 24." });
     }
@@ -227,23 +189,28 @@ const editMyEntry = async (req, res) => {
       return res.status(400).json({ message: "leaveDays must be between 0 and 31." });
     }
 
-    // 6. Validate jcNo is not being blanked out (it is required on the model)
     if (jcNo !== undefined && !jcNo?.trim()) {
       return res.status(400).json({ message: "Job Card No cannot be empty." });
     }
 
-    // 7. Apply updates — only fields that were actually sent in the request
     if (category  !== undefined) entry.category    = category;
-    if (vehicleNo !== undefined) entry.vehicleNo   = vehicleNo?.trim() || "";
     if (jcNo      !== undefined) entry.jcNo        = jcNo.trim();
     if (date      !== undefined) entry.date        = new Date(date);
+
+    // ── CHANGE: vehicleNo edit also updates vehicleNoNorm ────────────────────
+    // If an entry's vehicleNo changes, the normalized form must change too.
+    // Skipping this would silently break all future linking for this entry.
+    if (vehicleNo !== undefined) {
+      entry.vehicleNo     = vehicleNo?.trim() || "";
+      entry.vehicleNoNorm = normalizeVehicleNo(vehicleNo); // ← CRITICAL
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     entry.hoursWorked  = parsedHours;
     entry.labourAmount = parsedLabour;
     entry.leaveDays    = parsedLeave;
 
-    // 8. Save — Mongoose validators run on save (enum, required, etc.)
     await entry.save();
-
     res.json({ message: "Entry updated", entry });
   } catch (err) {
     if (err.name === "ValidationError") {
