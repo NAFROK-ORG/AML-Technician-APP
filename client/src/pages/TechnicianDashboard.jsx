@@ -8,6 +8,7 @@ import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
 import TechnicianTypeModal from "../components/TechnicianTypeModal";
 import { CATEGORIES } from "../utils/constants";
+import { normalizeVehicleNo } from "../utils/vehicleUtils"; // ← NEW
 
 // ─── Stable month reference (page-load time) ─────────────────────────────────
 const NOW = new Date();
@@ -292,17 +293,15 @@ const DASHBOARD_STYLES = `
   .td-incent-placeholder-text { font-size: 12px; color: #94A3B8; font-weight: 500; letter-spacing: 0.06em; }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Edit Entry Modal — bottom sheet, aligned with EntryForm
+     Edit Entry Modal — bottom sheet
   ───────────────────────────────────────────────────────────────────────── */
 
-  /* Backdrop */
   .em-overlay {
     position: fixed; inset: 0; z-index: 300;
     background: rgba(10, 22, 40, 0.72);
     display: flex; align-items: flex-end; justify-content: center;
   }
 
-  /* Sheet */
   .em-sheet {
     background: #FFFFFF;
     border-radius: 16px 16px 0 0;
@@ -318,7 +317,6 @@ const DASHBOARD_STYLES = `
   .em-sheet::-webkit-scrollbar-track { background: #F8FAFC; }
   .em-sheet::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
 
-  /* Progress bar */
   .em-progress {
     position: absolute; top: 0; left: 0; right: 0; height: 3px;
     background: #DDE3EE; border-radius: 16px 16px 0 0; overflow: hidden;
@@ -328,7 +326,6 @@ const DASHBOARD_STYLES = `
     animation: emProgressFill 1.8s ease-in-out infinite alternate;
   }
 
-  /* Sticky header */
   .em-header {
     position: sticky; top: 0; z-index: 10;
     background: #FFFFFF;
@@ -363,13 +360,11 @@ const DASHBOARD_STYLES = `
   .em-close:hover:not(:disabled) { background: #F1F5F9; border-color: #94A3B8; }
   .em-close:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Form body */
   .em-body {
     display: flex; flex-direction: column; gap: 22px;
     padding: 24px 20px 36px;
   }
 
-  /* Error banner */
   .em-error-banner {
     background: #FEF2F2; border: 1.5px solid #FCA5A5;
     border-left: 4px solid #DC2626; padding: 14px 16px;
@@ -379,7 +374,6 @@ const DASHBOARD_STYLES = `
     font-family: 'IBM Plex Sans', sans-serif;
   }
 
-  /* Field label */
   .em-label {
     display: block; font-size: 10px; font-weight: 700;
     letter-spacing: 0.16em; text-transform: uppercase; color: #374151;
@@ -387,7 +381,6 @@ const DASHBOARD_STYLES = `
   }
   .em-required { color: #1E3A8A; margin-left: 3px; }
 
-  /* Input */
   .em-input {
     width: 100%; box-sizing: border-box;
     height: 56px; padding: 0 14px;
@@ -401,24 +394,20 @@ const DASHBOARD_STYLES = `
   .em-input--err    { border-color: #DC2626 !important; background: #FEF2F2 !important; }
   .em-input[type="date"] { color-scheme: light; font-size: 15px; }
 
-  /* Select arrow */
   .em-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%231E3A8A' d='M7 9.5L2 4.5h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 14px center;
     padding-right: 40px; cursor: pointer;
   }
 
-  /* Field error */
   .em-field-err {
     margin: 6px 0 0; font-size: 11px; font-weight: 600;
     color: #DC2626; letter-spacing: 0.02em;
     font-family: 'IBM Plex Sans', sans-serif;
   }
 
-  /* Two-column row */
   .em-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  /* Rupee / unit prefix block */
   .em-prefix {
     position: absolute; left: 0; top: 0; bottom: 0; width: 48px;
     display: flex; align-items: center; justify-content: center;
@@ -429,12 +418,10 @@ const DASHBOARD_STYLES = `
   .em-prefix--hrs     { background: #1E3A8A; font-size: 13px; letter-spacing: 0.04em; }
   .em-prefix--lve     { background: #64748B; font-size: 11px; letter-spacing: 0.04em; }
 
-  /* Section divider */
   .em-divider { display: flex; align-items: center; gap: 12px; margin: 4px 0 0; }
   .em-divider-line  { flex: 1; height: 1px; background: #E2E8F0; }
   .em-divider-label { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #94A3B8; white-space: nowrap; }
 
-  /* Submit */
   .em-submit {
     width: 100%; height: 60px; background: #1E3A8A; border: none; border-radius: 0;
     color: #FFFFFF; font-size: 13px; font-weight: 700; letter-spacing: 0.16em;
@@ -447,7 +434,6 @@ const DASHBOARD_STYLES = `
   .em-submit:active:not(:disabled) { background: #1E3A8A; transform: scale(0.99); }
   .em-submit:disabled { background: #93C5FD; cursor: not-allowed; }
 
-  /* Cancel link */
   .em-cancel {
     background: none; border: none; color: #94A3B8; cursor: pointer;
     font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
@@ -459,13 +445,20 @@ const DASHBOARD_STYLES = `
   .em-cancel:hover:not(:disabled) { color: #374151; }
   .em-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Spinner inside submit */
   .em-spinner {
     display: inline-block; width: 18px; height: 18px;
     border: 2.5px solid rgba(255,255,255,0.35);
     border-top-color: #FFFFFF; border-radius: 50%;
     animation: emSpinnerRotate 0.65s linear infinite;
     margin-right: 10px; flex-shrink: 0;
+  }
+
+  /* Normalization preview inside edit modal */
+  .em-norm-preview {
+    margin: 5px 0 0;
+    font-size: 10px; font-weight: 600;
+    color: #1E3A8A; letter-spacing: 0.06em;
+    font-family: 'IBM Plex Sans', sans-serif;
   }
 
   @media (max-width: 480px) {
@@ -747,17 +740,18 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
 });
 
 // ─── Edit Entry Modal ─────────────────────────────────────────────────────────
-// Styled as a bottom sheet matching EntryForm — same inputs, layout, and feel.
-// All logic is unchanged; only the presentation has been updated.
 function EditEntryModal({ entry, onSave, onClose, saving, error }) {
   const {
     register,
     handleSubmit,
+    watch,
     reset,
     formState: { errors },
   } = useForm();
 
-  // Re-populate every time a different entry is opened
+  // Live vehicle number value — drives the normalization preview
+  const vehicleNoValue = watch("vehicleNo", "");
+
   useEffect(() => {
     if (entry) {
       reset({
@@ -781,7 +775,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
     >
       <div className="em-sheet" onClick={(e) => e.stopPropagation()}>
 
-        {/* Progress bar while saving */}
         {saving && (
           <div className="em-progress">
             <div className="em-progress-fill" />
@@ -813,7 +806,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
         {/* ── Form body ── */}
         <form onSubmit={handleSubmit(onSave)} noValidate className="em-body">
 
-          {/* Server error */}
           {error && (
             <div className="em-error-banner">
               <p className="em-error-text">{error}</p>
@@ -859,15 +851,39 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
 
           {/* ── Vehicle No + JC No ── */}
           <div className="em-row">
+
+            {/* ── Vehicle No — NOW REQUIRED ── */}
             <div>
-              <label className="em-label">Vehicle No</label>
+              <label className="em-label">
+                Vehicle No <span className="em-required">*</span>
+              </label>
               <input
                 type="text"
-                placeholder="KA-01-AB-1234"
-                className="em-input"
-                {...register("vehicleNo")}
+                placeholder="KA01AB1234"
+                className={`em-input${errors.vehicleNo ? " em-input--err" : ""}`}
+                style={{ letterSpacing: "0.06em", fontSize: "14px" }}
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={20}
+                {...register("vehicleNo", {
+                  required: "Vehicle number is required",
+                  onChange: (e) => {
+                    e.target.value = e.target.value.toUpperCase();
+                  },
+                })}
               />
+              {errors.vehicleNo && <p className="em-field-err">{errors.vehicleNo.message}</p>}
+              {/*
+                Normalization preview — shows vehicleNoNorm that will be stored.
+                Only shown when there is a value and no validation error.
+              */}
+              {vehicleNoValue && !errors.vehicleNo && (
+                <p className="em-norm-preview">
+                  Stored as: {normalizeVehicleNo(vehicleNoValue)}
+                </p>
+              )}
             </div>
+
             <div>
               <label className="em-label">
                 JC No <span className="em-required">*</span>
@@ -965,7 +981,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
               : "Save Changes"}
           </button>
 
-          {/* ── Cancel ── */}
           <button
             type="button"
             className="em-cancel"
