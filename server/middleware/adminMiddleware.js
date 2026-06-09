@@ -1,16 +1,18 @@
 /**
  * adminMiddleware.js
  *
- * Three guards, always used in this order on admin routes:
+ * Guards, always used in this order on admin routes:
  *   protect → adminOrAbove → branchGuard → [superAdminOnly on specific routes]
+ *
+ * Security routes use a separate guard:
+ *   protect → securityOnly
  *
  * NOTE: Optional chaining (?.) on req.user has been removed throughout.
  * protect() always runs before these guards and always sets req.user or
  * returns 401 — so req.user is guaranteed non-null here.
- * Keeping ?. was harmless but misleading (implies protect could be skipped).
  */
 
-// Passes if role is "admin" OR "superadmin". Blocks technicians.
+// Passes if role is "admin" OR "superadmin". Blocks technicians and security.
 const adminOrAbove = (req, res, next) => {
   if (!["admin", "superadmin"].includes(req.user.role)) {
     return res.status(403).json({ message: "Access denied: Admins only" });
@@ -33,13 +35,10 @@ const superAdminOnly = (req, res, next) => {
  *
  * Superadmin: always passes (branch = "all" is their sentinel, not a real branch).
  * Branch admin: branch must be a non-empty string that is NOT "all".
- *   If empty or "all" → their account isn't configured yet → hard stop.
  *
- * This guard fires BEFORE any DB query so a misconfigured admin account
- * can never accidentally query across all branches.
- *
- * With the updated authMiddleware, req.user.branch is always live from the DB —
- * so a branch change takes effect on the very next request, no re-login needed.
+ * Do NOT use branchGuard on security routes. Security users have a real branch
+ * (not "all"), so it would technically pass them, but mixing security into the
+ * admin middleware chain is semantically wrong. Security routes use securityOnly.
  */
 const branchGuard = (req, res, next) => {
   if (req.user.role === "admin") {
@@ -54,4 +53,20 @@ const branchGuard = (req, res, next) => {
   next();
 };
 
-module.exports = { adminOrAbove, superAdminOnly, branchGuard };
+/**
+ * securityOnly — passes ONLY if role is "security".
+ *
+ * Used on all security user CRUD routes (POST /log, GET /today, PUT /log/:id).
+ * Chain: protect → securityOnly (no branchGuard — it is for admin roles only).
+ *
+ * The board endpoint (GET /board) uses adminOrAbove + branchGuard instead,
+ * because admins view the board — not security users.
+ */
+const securityOnly = (req, res, next) => {
+  if (req.user.role !== "security") {
+    return res.status(403).json({ message: "Access denied: Security role required" });
+  }
+  next();
+};
+
+module.exports = { adminOrAbove, superAdminOnly, branchGuard, securityOnly };
