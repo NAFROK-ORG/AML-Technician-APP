@@ -11,7 +11,9 @@ import AdminTechnicianList from "./pages/AdminTechnicianList";
 import AdminTechnicianDetail from "./pages/AdminTechnicianDetail";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminAttendance from "./pages/AdminAttendance";
-import VehicleSearch from "./pages/VehicleSearch"; // ← new
+import VehicleSearch from "./pages/VehicleSearch";
+import SecurityDashboard from "./pages/SecurityDashboard";   // ← NEW
+import VehicleLogBoard from "./pages/VehicleLogBoard";       // ← NEW
 
 /**
  * GuestRoute — blocks /login and /signup for already-authenticated users.
@@ -20,6 +22,7 @@ import VehicleSearch from "./pages/VehicleSearch"; // ← new
  *   technician → /dashboard
  *   admin      → /admin   (branch-scoped dashboard)
  *   superadmin → /admin   (same component, full cross-branch view)
+ *   security   → /security  ← NEW
  */
 function GuestRoute({ children }) {
   const { token, user } = useAuthStore();
@@ -40,6 +43,7 @@ function GuestRoute({ children }) {
 
   if (token && user) {
     if (user.role === "technician") return <Navigate to="/dashboard" replace />;
+    if (user.role === "security")   return <Navigate to="/security"  replace />; // ← NEW
     return <Navigate to="/admin" replace />; // admin and superadmin
   }
 
@@ -62,6 +66,20 @@ export default function App() {
           element={
             <ProtectedRoute role="technician">
               <TechnicianDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/*
+          Security only — ← NEW
+          A completely separate page from the technician/admin flows.
+          No attendance gate. No admin nav. Just vehicle logging.
+        */}
+        <Route
+          path="/security"
+          element={
+            <ProtectedRoute role="security">
+              <SecurityDashboard />
             </ProtectedRoute>
           }
         />
@@ -98,6 +116,21 @@ export default function App() {
           element={
             <ProtectedRoute role={["admin", "superadmin"]}>
               <AdminAttendance />
+            </ProtectedRoute>
+          }
+        />
+
+        {/*
+          Vehicle Log Board — ← NEW
+          Both branch admins AND superadmins.
+          Branch admin: server forces their branch. Superadmin: optional branch filter.
+          role is an array — both roles see this page.
+        */}
+        <Route
+          path="/admin/vehicle-log"
+          element={
+            <ProtectedRoute role={["admin", "superadmin"]}>
+              <VehicleLogBoard />
             </ProtectedRoute>
           }
         />
