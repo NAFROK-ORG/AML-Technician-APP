@@ -6,7 +6,7 @@ const cron    = require("node-cron");
 
 const connectDB         = require("./config/db");
 const Attendance        = require("./models/Attendance");
-
+const securityRoutes = require("./routes/securityRoutes");
 const authRoutes        = require("./routes/authRoutes");
 const entryRoutes       = require("./routes/entryRoutes");
 const adminRoutes       = require("./routes/adminRoutes");
@@ -22,15 +22,21 @@ app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
 app.use(express.json());
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/auth",       authRoutes);
-app.use("/api/entries",    entryRoutes);
-app.use("/api/admin",      adminRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/entries", entryRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/attendance", attendanceRoutes);
-app.use("/api/search",     searchRoutes);                         // ← new
+app.use("/api/search", searchRoutes);
+app.use("/api/security", securityRoutes);
 
-app.get("/", (req, res) => res.json({ message: "Ashok Leyland API running" }));
-app.use((req, res) => res.status(404).json({ message: "Route not found" }));
+app.get("/", (req, res) =>
+  res.json({ message: "Ashok Leyland API running" })
+);
 
+// KEEP THIS LAST
+app.use((req, res) =>
+  res.status(404).json({ message: "Route not found" })
+);
 // ── Scheduled Jobs ───────────────────────────────────────────────────────────
 
 // Monthly cleanup — 5th of every month at midnight (00:00).
