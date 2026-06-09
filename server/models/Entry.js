@@ -17,20 +17,16 @@ const entrySchema = new mongoose.Schema(
     branch: {
       type:     String,
       required: true,
-      // Copied from User.branch at creation. Immutable after create.
     },
     technicianType: {
       type:    String,
       enum:    [null, ...TECHNICIAN_TYPES],
       default: null,
-      // Copied from User.technicianType at entry creation — never from req.body.
     },
     date: {
       type:     Date,
       required: [true, "Date is required"],
       default:  Date.now,
-      // Always set server-side in createEntry (new Date()).
-      // Never accepted from req.body — prevents backdating and forward-dating.
     },
     category: {
       type:     String,
@@ -52,23 +48,36 @@ const entrySchema = new mongoose.Schema(
       type:    String,
       trim:    true,
       default: "",
-      // Optional — not all job cards are vehicle-specific.
-      // Stored as "" (empty string) when not provided, never null.
-      // This means sparse: false is correct on the index below —
-      // sparse only skips null/missing fields, and "" is a real value
-      // that would be indexed anyway. A regular index is correct here.
+      // Stored as entered by technician (original format).
+      // New entries (post security-feature deploy): vehicleNo is required
+      // and vehicleNoNorm is always populated.
+      // Old entries: vehicleNo may be "" and vehicleNoNorm is absent — correct,
+      // since there were no security logs then. Old entries are permanently
+      // excluded from linking queries (which filter by vehicleNoNorm).
     },
+    // ── NEW FIELD ─────────────────────────────────────────────────────────────
+    vehicleNoNorm: {
+      type: String,
+      // Optional — only populated for entries created AFTER this feature deploys.
+      // Old entries: field is absent / undefined. They are NEVER touched by this
+      // change and remain fully accessible for all existing features.
+      //
+      // Do NOT add required: true — that would cause issues with old documents
+      // in some Mongoose versions and would be incorrect semantically.
+      //
+      // This field is used exclusively for the SecurityLog linking algorithm.
+      // It is always normalizeVehicleNo(vehicleNo) — computed in entryController,
+      // never accepted from req.body.
+      //
+      // Linking query: { vehicleNoNorm: log.vehicleNoNorm, branch: log.branch,
+      //                  createdAt: { $gte: log.loggedAt, $lt: nextLog?.loggedAt } }
+    },
+    // ─────────────────────────────────────────────────────────────────────────
     jcNo: {
       type:     String,
       required: [true, "JC Number is required"],
       trim:     true,
     },
-    // FIX Bug 8: Added max validators to all three numeric fields.
-    // Without these, a technician could submit hoursWorked: 9999 and instantly
-    // vault to Slab 3, or leaveDays: 100 and zero out their entire incentive.
-    // These schema validators fire for ALL write paths (create + findByIdAndUpdate
-    // with runValidators: true), providing a consistent safety net at the DB layer
-    // in addition to the controller-level bounds checks in entryController.js.
     labourAmount: {
       type:     Number,
       required: true,
@@ -100,38 +109,21 @@ const entrySchema = new mongoose.Schema(
 );
 
 /* ─── Indexes ──────────────────────────────────────────────────────────────────
-
-   All indexes here are purely additive — they never modify document data,
-   never break existing queries, and are built by MongoDB Atlas in the
-   background without locking the collection. Safe to deploy to production.
-
-   Existing indexes (already in production):
-   ─────────────────────────────────────────
-   { branch: 1 }          — admin branch-scoped queries (getEntries, getAnalytics)
+   Existing indexes (unchanged):
+   { branch: 1 }          — admin branch-scoped queries
    { userId: 1 }          — technician's own entry list
    { technicianType: 1 }  — analytics grouping by type
+   { vehicleNo: 1 }       — vehicle search support
 
-   New index:
-   ──────────
-   { vehicleNo: 1 }
-   ─ WHY: vehicleNo is now used in vehicle search (GET /api/search/vehicle).
-   ─ WHY NOT sparse: vehicleNo defaults to "" — every document has this field
-     as a real value (even if empty string). sparse: true only skips null/missing
-     fields, so it would index all documents anyway. Regular index is correct.
-   ─ REGEX LIMITATION: The current buildVehicleRegex() produces patterns without
-     a ^ anchor, so MongoDB's query planner cannot use this index for the regex
-     filter. At current scale (~12,500 entries/year for 50 technicians), a
-     collection scan on this field is sub-millisecond — not a concern right now.
-     This index does benefit future exact-match queries on vehicleNo if added later.
-   ─ SAFETY: Zero risk to existing data or queries. Mongoose calls ensureIndexes()
-     at startup — if the index already exists, it's a no-op. If new, Atlas builds
-     it in the background while the collection remains fully accessible.
-
-   ─────────────────────────────────────────────────────────────────────────────── */
+   No new index for vehicleNoNorm — the linking queries use createdAt as the
+   primary filter driver, and vehicleNoNorm is an equality match on a small
+   result set (entries for one vehicle in one branch). At current scale this
+   is fast. A compound index can be added later as a zero-risk additive change.
+─────────────────────────────────────────────────────────────────────────────── */
 
 entrySchema.index({ branch: 1 });
 entrySchema.index({ userId: 1 });
 entrySchema.index({ technicianType: 1 });
-entrySchema.index({ vehicleNo: 1 }); // vehicle search support — see note above
+entrySchema.index({ vehicleNo: 1 });
 
 module.exports = mongoose.model("Entry", entrySchema);
