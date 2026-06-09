@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { useState } from "react";
 import api from "../api/axios";
 import { CATEGORIES } from "../utils/constants";
+import { normalizeVehicleNo } from "../utils/vehicleUtils"; // ← NEW
 
 /* ─── Global keyframes ──────────────────────────────────────────── */
 const GLOBAL_STYLES = `
@@ -150,15 +151,22 @@ export default function EntryForm({ onClose, onSaved }) {
   const [serverError, setServerError] = useState("");
 
   const {
-    register, handleSubmit, formState: { errors },
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
   } = useForm({
     defaultValues: {
       date:         new Date().toISOString().split("T")[0],
       labourAmount: "",
       leaveDays:    "",
       hoursWorked:  "",
+      vehicleNo:    "",
     },
   });
+
+  // Live vehicle number value — drives the normalization preview
+  const vehicleNoValue = watch("vehicleNo", "");
 
   const onSubmit = async (data) => {
     setLoading(true);
@@ -183,14 +191,14 @@ export default function EntryForm({ onClose, onSaved }) {
   const inputBase = {
     width: "100%",
     boxSizing: "border-box",
-    height: "56px",                   /* fat touch target */
+    height: "56px",
     padding: "0 14px",
     background: "#F8FAFC",
     border: "1.5px solid #CBD5E1",
-    borderRadius: "0",                /* sharp — corporate */
+    borderRadius: "0",
     color: "#0A1628",
     fontSize: "18px",
-    fontWeight: "700",                /* extra bold for sun */
+    fontWeight: "700",
     fontFamily: "'IBM Plex Sans', sans-serif",
     outline: "none",
     appearance: "none",
@@ -209,7 +217,6 @@ export default function EntryForm({ onClose, onSaved }) {
         style={{
           position: "fixed", inset: 0, zIndex: 200,
           background: "rgba(10, 22, 40, 0.72)",
-          /* no blur — performance + sunlight readability */
           display: "flex", alignItems: "flex-end", justifyContent: "center",
         }}
         onClick={(e) => e.target === e.currentTarget && !loading && onClose()}
@@ -232,7 +239,6 @@ export default function EntryForm({ onClose, onSaved }) {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Saving progress bar */}
           <ProgressBar visible={loading} />
 
           {/* ── Sticky header ── */}
@@ -242,7 +248,6 @@ export default function EntryForm({ onClose, onSaved }) {
             borderBottom: "1.5px solid #E2E8F0",
             padding: "14px 20px 14px",
           }}>
-            {/* Drag handle */}
             <div style={{
               width: 40, height: 4, background: "#CBD5E1",
               borderRadius: 2, margin: "0 auto 14px",
@@ -280,7 +285,7 @@ export default function EntryForm({ onClose, onSaved }) {
                   background: "#F8FAFC",
                   border: "1.5px solid #DDE3EE",
                   borderRadius: "0",
-                  width: "44px", height: "44px",   /* WCAG touch target */
+                  width: "44px", height: "44px",
                   color: "#374151",
                   fontSize: "22px",
                   fontWeight: "400",
@@ -353,20 +358,50 @@ export default function EntryForm({ onClose, onSaved }) {
                 {errors.jcNo && <FieldError msg={errors.jcNo.message} />}
               </div>
 
+              {/* ── Vehicle No — NOW REQUIRED ── */}
               <div>
-                <FieldLabel text="Vehicle No" />
+                <FieldLabel text="Vehicle No" required />
                 <input
                   type="text"
-                  placeholder="KA-01 AB 1234"
-                  className="ef-input"
+                  placeholder="KA01AB1234"
+                  className={`ef-input${errors.vehicleNo ? " ef-err" : ""}`}
                   style={{
                     ...inputBase,
                     fontFamily: "'IBM Plex Sans', sans-serif",
                     fontSize: "13px",
-                    letterSpacing: "0.04em",
+                    letterSpacing: "0.06em",
                   }}
-                  {...register("vehicleNo")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={20}
+                  {...register("vehicleNo", {
+                    required: "Vehicle number is required",
+                    // Auto-uppercase as the technician types.
+                    // Mutates the DOM value before RHF captures it so the
+                    // live preview and the submitted value are both uppercase.
+                    onChange: (e) => {
+                      e.target.value = e.target.value.toUpperCase();
+                    },
+                  })}
                 />
+                {errors.vehicleNo && <FieldError msg={errors.vehicleNo.message} />}
+                {/*
+                  Normalization preview — shows what will actually be stored
+                  in vehicleNoNorm (used by the linking algorithm).
+                  Only shown when the field has a value and no error.
+                */}
+                {vehicleNoValue && !errors.vehicleNo && (
+                  <p style={{
+                    margin: "5px 0 0",
+                    fontSize: "10px",
+                    fontWeight: "600",
+                    color: "#1E3A8A",
+                    letterSpacing: "0.06em",
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                  }}>
+                    Stored as: {normalizeVehicleNo(vehicleNoValue)}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -376,7 +411,6 @@ export default function EntryForm({ onClose, onSaved }) {
             <div>
               <FieldLabel text="Labour Amount" required />
               <div style={{ position: "relative" }}>
-                {/* Rupee prefix — solid, high contrast */}
                 <div style={{
                   position: "absolute", left: 0, top: 0, bottom: 0,
                   width: "48px",
@@ -440,7 +474,7 @@ export default function EntryForm({ onClose, onSaved }) {
                 <div style={{
                   position: "absolute", left: 0, top: 0, bottom: 0,
                   width: "48px",
-                  background: "#64748B",    /* muted — optional field */
+                  background: "#64748B",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#FFFFFF",
                   fontSize: "11px", fontWeight: "700", letterSpacing: "0.04em",
@@ -460,7 +494,6 @@ export default function EntryForm({ onClose, onSaved }) {
                 />
               </div>
               {errors.leaveDays && <FieldError msg={errors.leaveDays.message} />}
-              {/* Helper text — subtle but readable */}
               <p style={{
                 margin: "6px 0 0", fontSize: "11px", color: "#94A3B8",
                 fontWeight: "500", fontFamily: "'IBM Plex Sans', sans-serif",
@@ -490,7 +523,7 @@ export default function EntryForm({ onClose, onSaved }) {
               disabled={loading}
               style={{
                 width: "100%",
-                height: "60px",               /* large, easy to tap */
+                height: "60px",
                 background: "#1E3A8A",
                 border: "none",
                 borderRadius: "0",
