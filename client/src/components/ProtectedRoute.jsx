@@ -26,8 +26,10 @@ export default function ProtectedRoute({ role, children }) {
 
   if (!allowedRoles.includes(user.role)) {
     // Send them to the right home for their actual role
-    if (user.role === "technician") return <Navigate to="/dashboard" replace />;
-    return <Navigate to="/admin" replace />; // admin and superadmin
+  // FIX — add one case
+if (user.role === "technician") return <Navigate to="/dashboard" replace />;
+if (user.role === "security")   return <Navigate to="/security"  replace />; // ← ADD
+return <Navigate to="/admin" replace />; // admin and superadmin
   }
 
   return children;
