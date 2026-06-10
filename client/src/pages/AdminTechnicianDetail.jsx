@@ -390,16 +390,22 @@ function EditEntryModal({ entry, onClose, onSaved }) {
               />
               {errors.jcNo && <p className="em-field-err">{errors.jcNo.message}</p>}
             </div>
-            <div>
-              <label className="em-label">Vehicle No</label>
-              <input
-                type="text"
-                placeholder="KA-01-AB-1234"
-                className="em-input"
-                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "14px", letterSpacing: "0.04em" }}
-                {...register("vehicleNo")}
-              />
-            </div>
+        <div>
+  <label className="em-label">Vehicle No <span style={{ color: "#E53E3E" }}>*</span></label>
+  <input
+    type="text"
+    placeholder="KA-01-AB-1234"
+    className={`em-input${errors.vehicleNo ? " em-input--err" : ""}`}
+    style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "14px", letterSpacing: "0.04em" }}
+    {...register("vehicleNo", {
+      required:  "Vehicle number is required",
+      validate: (v) => v.trim().length >= 2 || "Vehicle number is too short",
+    })}
+  />
+  {errors.vehicleNo && (
+    <p className="em-field-err">{errors.vehicleNo.message}</p>
+  )}
+</div>
           </div>
 
           <div className="em-divider">
@@ -419,12 +425,12 @@ function EditEntryModal({ entry, onClose, onSaved }) {
                 placeholder="0"
                 className={`em-input${errors.labourAmount ? " em-input--err" : ""}`}
                 style={{ paddingLeft: "62px" }}
-                {...register("labourAmount", {
-                  required:      "Required",
-                  min:           { value: 0,       message: "Min ₹0" },
-                  max:           { value: 1000000, message: "Max ₹10,00,000" },
-                  valueAsNumber: true,
-                })}
+               {...register("labourAmount", {
+  required:      "Required",
+  min:           { value: 0,      message: "Min ₹0" },
+  max:           { value: 100000, message: "Max ₹1,00,000" },
+  valueAsNumber: true,
+})}
               />
             </div>
             {errors.labourAmount && <p className="em-field-err">{errors.labourAmount.message}</p>}
@@ -717,15 +723,24 @@ export default function AdminTechnicianDetail() {
     </div>
   );
 
-  const { user, entries = [], total = 0, pages = 1 } = data || {};
+ const { user, entries = [], total = 0, pages = 1, allTimeStats } = data || {};
 
-  const totals = entries.reduce((acc, e) => ({
-    labour:    acc.labour    + (e.labourAmount || 0),
-    hours:     acc.hours     + (e.hoursWorked  || 0),
-    incentive: acc.incentive + (e.incentive    || 0),
-    leave:     acc.leave     + (e.leaveDays    || 0),
-  }), { labour: 0, hours: 0, incentive: 0, leave: 0 });
-
+const totals = allTimeStats
+  ? {
+      labour:    allTimeStats.totalLabour,
+      hours:     allTimeStats.totalHours,
+      incentive: allTimeStats.totalIncentive,
+      leave:     allTimeStats.totalLeave,
+    }
+  : entries.reduce(
+      (acc, e) => ({
+        labour:    acc.labour    + (e.labourAmount || 0),
+        hours:     acc.hours     + (e.hoursWorked  || 0),
+        incentive: acc.incentive + (e.incentive    || 0),
+        leave:     acc.leave     + (e.leaveDays    || 0),
+      }),
+      { labour: 0, hours: 0, incentive: 0, leave: 0 }
+    );
   /* ── Technician type style helper ── */
   const typeStyle = user?.technicianType ? TYPE_STYLE[user.technicianType] : null;
 
