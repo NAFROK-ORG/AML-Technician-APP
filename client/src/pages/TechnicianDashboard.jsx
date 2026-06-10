@@ -44,11 +44,9 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ];
 
-const SLABS = [
-  { slab: 1, minHours: 100, minLabour: 47500,  incentive: 2000 },
-  { slab: 2, minHours: 120, minLabour: 57500,  incentive: 3000 },
-  { slab: 3, minHours: 150, minLabour: 72500,  incentive: 5000 },
-];
+// ── FIX Bug 4: SLABS constant removed — now uses data.nextSlab from API ──────
+// The backend returns nextSlab (the next slab object to reach, or null if at max).
+// Using data.nextSlab is always correct for any tier (mechanic or helper).
 
 // ─── Injected styles ──────────────────────────────────────────────────────────
 const DASHBOARD_STYLES = `
@@ -618,11 +616,22 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
 
   const toggleOpen = useCallback(() => setOpen((o) => !o), []);
 
-  const hoursMet       = data ? data.totalHours  > 100   : false;
-  const labourMet      = data ? data.totalLabour > 47500  : false;
-  const bothMet        = hoursMet && labourMet;
+  // ── FIX Bug 4: use data.nextSlab from API instead of local SLABS constant ──
+  // progressTarget is null when at max slab — drives conditional rendering below.
   const currentSlabNum = data?.slabNumber ?? 0;
-  const progressTarget = SLABS.find((s) => s.slab > currentSlabNum) ?? SLABS[SLABS.length - 1];
+  const progressTarget = data?.nextSlab ?? null;  // null = at max slab
+
+  // ── FIX Bug 4: hoursMet/labourMet for totals cell coloring ───────────────
+  // Green when in any slab (slabNumber > 0 means both thresholds were met).
+  // Old code hardcoded Mechanic Slab 1 thresholds (100h / ₹47500) — wrong for helpers.
+  const hoursMet  = data ? data.slabNumber > 0 : false;
+  const labourMet = data ? data.slabNumber > 0 : false;
+  const bothMet   = data ? data.slabNumber > 0 : false;
+
+  // ── FIX Bug 4: separate "next threshold" vars for the progress warning ────
+  // The warning shows when ONE next-threshold is met but not the other.
+  const nextHoursMet  = progressTarget ? data.totalHours  > progressTarget.minHours  : false;
+  const nextLabourMet = progressTarget ? data.totalLabour > progressTarget.minLabour : false;
 
   return (
     <div className="td-section" style={{ marginTop: 16 }}>
@@ -674,21 +683,42 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
                 ))}
               </div>
 
+              {/* ── FIX Bug 4: progress section — uses progressTarget (null = max slab) ── */}
               <div style={{ marginBottom: "20px" }}>
                 <div style={{
                   fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
                   textTransform: "uppercase", color: "#94A3B8", marginBottom: "14px",
                 }}>
-                  {currentSlabNum === 3 ? "Max slab achieved" : `Progress toward Slab ${progressTarget.slab}`}
+                  {/* FIX: was `currentSlabNum === 3` — broke at Slab 4 */}
+                  {progressTarget === null
+                    ? "Max slab achieved"
+                    : `Progress toward Slab ${progressTarget.slab}`}
                 </div>
-                <ThresholdBar label="Hours" current={data.totalHours} target={progressTarget.minHours}
-                  met={data.totalHours > progressTarget.minHours} formatValue={(v) => `${v} hrs`} />
-                <ThresholdBar label="Labour" current={data.totalLabour} target={progressTarget.minLabour}
-                  met={data.totalLabour > progressTarget.minLabour} formatValue={(v) => fmtMoney(v)} />
-                {(hoursMet !== labourMet) && (
-                  <div className="td-both-warning">
-                    Both hours and labour must exceed their threshold for a slab to apply.
-                  </div>
+
+                {/* FIX Bug 4: ThresholdBars only render when there IS a next target */}
+                {progressTarget !== null && (
+                  <>
+                    <ThresholdBar
+                      label="Hours"
+                      current={data.totalHours}
+                      target={progressTarget.minHours}
+                      met={data.totalHours > progressTarget.minHours}
+                      formatValue={(v) => `${v} hrs`}
+                    />
+                    <ThresholdBar
+                      label="Labour"
+                      current={data.totalLabour}
+                      target={progressTarget.minLabour}
+                      met={data.totalLabour > progressTarget.minLabour}
+                      formatValue={(v) => fmtMoney(v)}
+                    />
+                    {/* FIX Bug 4: warning uses nextHoursMet/nextLabourMet, not the slab-coloring booleans */}
+                    {(nextHoursMet !== nextLabourMet) && (
+                      <div className="td-both-warning">
+                        Both hours and labour must exceed their threshold for a slab to apply.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -705,10 +735,32 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
 
               <div className="td-breakdown">
                 {[
-                  { label: "Base Incentive",   value: data.baseIncentive > 0 ? `₹${data.baseIncentive.toLocaleString()}` : "₹0", dimmed: data.baseIncentive === 0 },
-                  { label: `Leave Multiplier (${data.leaveTier ?? "—"})`, value: `${Math.round(data.leaveMultiplier * 100)}%`, dimmed: data.leaveMultiplier === 0 },
-                  { label: "No-Leave Bonus",   value: data.noLeaveBonus > 0 ? `+₹${data.noLeaveBonus.toLocaleString()}` : "—", dimmed: data.noLeaveBonus === 0 },
-                  ...(data.isCapped ? [{ label: "Cap Applied", value: "₹10,000 max", dimmed: false }] : []),
+                  {
+                    // FIX Bug 4: show slab4Bonus inline when present
+                    label: `Base Incentive${data.slab4Bonus > 0
+                      ? ` (incl. ₹${data.slab4Bonus.toLocaleString()} variable)`
+                      : ""}`,
+                    value: data.baseIncentive > 0
+                      ? `₹${data.baseIncentive.toLocaleString()}`
+                      : "₹0",
+                    dimmed: data.baseIncentive === 0,
+                  },
+                  {
+                    label: `Leave Multiplier (${data.leaveTier ?? "—"})`,
+                    value: `${Math.round(data.leaveMultiplier * 100)}%`,
+                    dimmed: data.leaveMultiplier === 0,
+                  },
+                  {
+                    label: "No-Leave Bonus",
+                    value: data.noLeaveBonus > 0 ? `+₹${data.noLeaveBonus.toLocaleString()}` : "—",
+                    dimmed: data.noLeaveBonus === 0,
+                  },
+                  // FIX Bug 5: was hardcoded "₹10,000 max" — wrong for helper tier (cap = ₹7,000)
+                  ...(data.isCapped ? [{
+                    label: "Cap Applied",
+                    value: `₹${(data.maxIncentive ?? 10000).toLocaleString()} max`,
+                    dimmed: false,
+                  }] : []),
                 ].map(({ label, value, dimmed }) => (
                   <div key={label} className={`td-breakdown-row${dimmed ? " dimmed" : ""}`}>
                     <span className="td-breakdown-label">{label}</span>
@@ -852,7 +904,7 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
           {/* ── Vehicle No + JC No ── */}
           <div className="em-row">
 
-            {/* ── Vehicle No — NOW REQUIRED ── */}
+            {/* ── Vehicle No — REQUIRED ── */}
             <div>
               <label className="em-label">
                 Vehicle No <span className="em-required">*</span>
@@ -873,10 +925,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
                 })}
               />
               {errors.vehicleNo && <p className="em-field-err">{errors.vehicleNo.message}</p>}
-              {/*
-                Normalization preview — shows vehicleNoNorm that will be stored.
-                Only shown when there is a value and no validation error.
-              */}
               {vehicleNoValue && !errors.vehicleNo && (
                 <p className="em-norm-preview">
                   Stored as: {normalizeVehicleNo(vehicleNoValue)}
@@ -1001,6 +1049,8 @@ export default function TechnicianDashboard() {
   const { user } = useAuthStore();
 
   const [entries,          setEntries]          = useState([]);
+  // FIX Bug 1+2: track real server total separately from loaded entries array
+  const [entriesTotal,     setEntriesTotal]     = useState(0);
   const [loading,          setLoading]          = useState(true);
   const [showForm,         setShowForm]         = useState(false);
   const [currentIncentive, setCurrentIncentive] = useState(null);
@@ -1012,10 +1062,15 @@ export default function TechnicianDashboard() {
   const [editSaving,   setEditSaving]   = useState(false);
   const [editError,    setEditError]    = useState("");
 
+  // FIX Bug 1: was `setEntries(res.data)` — backend returns { entries, total, page, pages }
+  // not a plain array. That caused entries.filter() to throw TypeError immediately.
+  // FIX Bug 2: was no pagination params — backend defaulted to page=1, limit=20.
+  // Now requests limit=100 (max the backend allows) so all entries are loaded.
   const fetchEntries = useCallback(async () => {
     try {
-      const res = await api.get("/api/entries/my");
-      setEntries(res.data);
+      const res = await api.get("/api/entries/my?limit=100");
+      setEntries(res.data.entries || []);
+      setEntriesTotal(res.data.total || 0);
     } catch (err) {
       console.error("Entries fetch error:", err);
     } finally {
@@ -1224,7 +1279,9 @@ export default function TechnicianDashboard() {
           <div className="td-section td-a5">
             <div className="td-section-header">
               <span className="td-section-label">All Work Entries</span>
-              <span className="td-section-count">{entries.length} total</span>
+              {/* FIX Bug 2: was entries.length — only showed loaded count (≤20/100).
+                  entriesTotal comes from res.data.total — real DB count. */}
+              <span className="td-section-count">{entriesTotal} total</span>
             </div>
             {loading ? (
               <div className="td-loading">Loading…</div>
