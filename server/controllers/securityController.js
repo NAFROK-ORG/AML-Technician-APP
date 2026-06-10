@@ -1,6 +1,5 @@
-const SecurityLog          = require("../models/SecurityLog");
-const Entry                = require("../models/Entry");
-const User                 = require("../models/User");
+const SecurityLog            = require("../models/SecurityLog");
+const Entry                  = require("../models/Entry");
 const { normalizeVehicleNo } = require("../utils/vehicleUtils");
 
 // ─── Helper: UTC midnight ─────────────────────────────────────────────────────
@@ -14,11 +13,17 @@ function utcMidnight(input) {
 
 // ─── POST /api/security/log ───────────────────────────────────────────────────
 // Creates a new vehicle log for the requesting security user.
-// Only vehicleNo comes from req.body. Everything else is server-sourced:
-//   branch    → User.findById (never req.body)
-//   loggedBy  → req.user.userId (from JWT, never req.body)
-//   date      → utcMidnight() (calendar bucket)
-//   loggedAt  → new Date() (exact timestamp for linking algorithm)
+//
+// Branch sourcing — OPTIMIZATION:
+//   protect() already fetches the user from DB on every request and sets
+//   req.user.branch. The previous version called User.findById() again here,
+//   paying a second DB round-trip for data already in memory.
+//   We now use req.user.branch directly — same data, zero extra latency.
+//
+// Guard: if branch is somehow empty (misconfigured security account), we
+//   fail loudly with a 400 rather than silently storing a log with no branch.
+//   branchGuard is intentionally NOT on security routes (it is for admin roles
+//   only), so this inline check is the right place for the safety net.
 const createLog = async (req, res) => {
   try {
     const { vehicleNo } = req.body;
@@ -29,21 +34,27 @@ const createLog = async (req, res) => {
       });
     }
 
-    // Read branch from DB — same pattern as markAttendance.
-    // Never trust req.body for branch.
-    const user = await User.findById(req.user.userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // ── Branch from req.user — NO extra DB call needed ────────────────────────
+    // protect() has already fetched the live user from DB and set req.user.branch.
+    // User import is no longer needed in this file; removed from require list.
+    const branch = req.user.branch;
+    if (!branch || branch.trim() === "") {
+      return res.status(400).json({
+        message: "Security user has no branch configured. Contact your developer.",
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const trimmed       = vehicleNo.trim();
     const vehicleNoNorm = normalizeVehicleNo(trimmed);
 
     const log = await SecurityLog.create({
-      vehicleNo:     trimmed,
+      vehicleNo:    trimmed,
       vehicleNoNorm,
-      branch:        user.branch,
-      loggedBy:      req.user.userId,
-      date:          utcMidnight(),
-      loggedAt:      new Date(), // NEVER from client
+      branch,                     // from req.user — no DB round-trip
+      loggedBy:     req.user.userId,
+      date:         utcMidnight(),
+      loggedAt:     new Date(),   // NEVER from client
     });
 
     res.status(201).json(log);
@@ -56,12 +67,18 @@ const createLog = async (req, res) => {
 // ─── GET /api/security/today ──────────────────────────────────────────────────
 // Returns all logs created by the requesting security user for today.
 // Sorted newest first so the most recent log appears at the top of the dashboard.
+//
+// OPTIMIZATION: .lean() returns plain JS objects instead of full Mongoose
+// documents. For a read-only GET endpoint returning JSON, this avoids
+// unnecessary hydration overhead on every call.
 const getTodayLogs = async (req, res) => {
   try {
     const logs = await SecurityLog.find({
       loggedBy: req.user.userId,
       date:     utcMidnight(),
-    }).sort({ loggedAt: -1 });
+    })
+      .sort({ loggedAt: -1 })
+      .lean(); // ← read-only response, no document methods needed
 
     res.json(logs);
   } catch (err) {
@@ -79,6 +96,13 @@ const getTodayLogs = async (req, res) => {
 //
 // Ownership enforced: only the security user who created the log can edit it.
 // No delete route — audit integrity preserved.
+//
+// BUG FIX: ownership check now uses .toString() on BOTH sides.
+//   protect() sets req.user.userId = user._id (a MongoDB ObjectId, not a string).
+//   log.loggedBy.toString() produces a string.
+//   The old comparison (string !== ObjectId) was ALWAYS true in JavaScript
+//   → every edit returned 403 with no error message.
+//   Both sides must be converted to string for a valid equality check.
 const editLog = async (req, res) => {
   try {
     const { vehicleNo } = req.body;
@@ -93,11 +117,13 @@ const editLog = async (req, res) => {
     if (!log) return res.status(404).json({ message: "Log not found" });
 
     // Ownership check — security users can only edit their own logs.
-    if (log.loggedBy.toString() !== req.user.userId) {
+    // .toString() on BOTH sides: log.loggedBy is ObjectId, req.user.userId is
+    // also ObjectId (set by protect()). String comparison is the safe pattern.
+    if (log.loggedBy.toString() !== req.user.userId.toString()) {
       return res.status(403).json({ message: "Cannot edit another user's log" });
     }
 
-    const trimmed = vehicleNo.trim();
+    const trimmed     = vehicleNo.trim();
     log.vehicleNo     = trimmed;
     log.vehicleNoNorm = normalizeVehicleNo(trimmed); // ← CRITICAL — always recompute
 
@@ -161,6 +187,7 @@ const getBoardLogs = async (req, res) => {
     // We intentionally fetch all logs before pagination so the nextLog algorithm
     // can see the full sequence for any vehicle on this date, not just the current
     // page. At current scale (tens of logs per day), this is fast and simple.
+    // .lean() — read-only in-memory set, no Mongoose document overhead.
     const allLogs = await SecurityLog.find(filter)
       .populate("loggedBy", "name")
       .sort({ vehicleNoNorm: 1, loggedAt: 1 })
@@ -177,11 +204,11 @@ const getBoardLogs = async (req, res) => {
       pageLogs.map(async (log) => {
         // Find the next log for this exact vehicle+branch in the full in-memory set.
         // "Next" = same vehicleNoNorm, same branch, later loggedAt.
-        // This requires NO extra DB query — allLogs is already in memory.
+        // No extra DB query — allLogs is already in memory.
         const nextLog = allLogs.find(
           (l) =>
             l.vehicleNoNorm === log.vehicleNoNorm &&
-            l.branch        === log.branch &&
+            l.branch        === log.branch        &&
             l.loggedAt      >  log.loggedAt
         );
 
@@ -194,6 +221,7 @@ const getBoardLogs = async (req, res) => {
         // Rule 4: if a next log exists, entries before it belong to this visit.
         if (nextLog) entryFilter.createdAt.$lt = nextLog.loggedAt;
 
+        // .lean() — read-only response, no document methods needed
         const entries = await Entry.find(entryFilter)
           .populate("userId", "name technicianId technicianType")
           .sort({ createdAt: 1 })
