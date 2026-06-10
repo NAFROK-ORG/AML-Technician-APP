@@ -9,7 +9,7 @@ const VALID_BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
  * True if the requester is a branch-scoped admin (not superadmin).
  */
 const isBranchAdmin = (req) => req.user.role === "admin";
-
+const { normalizeVehicleNo } = require("../utils/vehicleUtils");
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILITY: monthDateRange(yearNum, monthNum0)
 //
@@ -256,7 +256,10 @@ const editEntry = async (req, res) => {
     const updates = {};
 
     if (category     !== undefined) updates.category     = category;
-    if (vehicleNo    !== undefined) updates.vehicleNo    = vehicleNo?.trim() || "";
+if (vehicleNo !== undefined) {
+  updates.vehicleNo     = vehicleNo?.trim() || "";
+  updates.vehicleNoNorm = normalizeVehicleNo(vehicleNo?.trim() || "");
+}
     if (jcNo         !== undefined) updates.jcNo         = jcNo?.trim();
     if (hoursWorked  !== undefined) updates.hoursWorked  = Number(hoursWorked)  || 0;
     if (labourAmount !== undefined) updates.labourAmount = Number(labourAmount) || 0;
