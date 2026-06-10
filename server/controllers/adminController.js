@@ -4,23 +4,11 @@ const Attendance = require("../models/Attendance");
 
 const VALID_BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
 
-/**
- * isBranchAdmin(req)
- * True if the requester is a branch-scoped admin (not superadmin).
- */
 const isBranchAdmin = (req) => req.user.role === "admin";
 const { normalizeVehicleNo } = require("../utils/vehicleUtils");
+
 // ─────────────────────────────────────────────────────────────────────────────
-// UTILITY: monthDateRange(yearNum, monthNum0)
-//
-// Returns { from, to } as UTC Date objects that bracket a calendar month.
-//   from → first millisecond of the month  (inclusive, $gte)
-//   to   → first millisecond of next month (exclusive, $lt)
-//
-// Using $lt next-month-start instead of $lte last-day-end avoids any
-// edge cases with hours/minutes/seconds on the final day.
-//
-// monthNum0 is 0-indexed (same as JS Date: Jan=0, Dec=11).
+// UTILITY: monthDateRange
 // ─────────────────────────────────────────────────────────────────────────────
 const monthDateRange = (yearNum, monthNum0) => ({
   from: new Date(Date.UTC(yearNum, monthNum0, 1)),
@@ -28,11 +16,7 @@ const monthDateRange = (yearNum, monthNum0) => ({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UTILITY: parseMonthParam(monthStr)
-//
-// Parses an optional "YYYY-MM" query param.
-// Returns { year, month0 } (month0 is 0-indexed).
-// Falls back to current UTC month if param is absent or malformed.
+// UTILITY: parseMonthParam
 // ─────────────────────────────────────────────────────────────────────────────
 const parseMonthParam = (monthStr) => {
   if (monthStr) {
@@ -40,19 +24,17 @@ const parseMonthParam = (monthStr) => {
     if (parts.length === 2) {
       const y = parseInt(parts[0], 10);
       const m = parseInt(parts[1], 10);
-      // m is 1-indexed from the query string; validate range before converting
       if (!isNaN(y) && !isNaN(m) && m >= 1 && m <= 12) {
         return { year: y, month0: m - 1 };
       }
     }
   }
-  // Default: current UTC month
   const now = new Date();
   return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/admin/branches  ← SUPERADMIN ONLY (enforced in routes)
+// GET /api/admin/branches  ← SUPERADMIN ONLY
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranches = async (req, res) => {
   try {
@@ -68,39 +50,19 @@ const getBranches = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branch/:branch?month=YYYY-MM
-//
-// Aggregated stats for a branch scoped to a single calendar month.
-//
-// CHANGE FROM PREVIOUS VERSION:
-//   Previously this returned all-time totals (no date filter).
-//   Now it accepts an optional ?month=YYYY-MM query param and defaults
-//   to the current calendar month if omitted.
-//
-//   This affects ONLY the stats returned by this endpoint.
-//   getBranchTechnicians is a completely separate endpoint and is
-//   intentionally left as all-time — technician roster and their
-//   cumulative stats are not month-scoped by design.
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchDashboard = async (req, res) => {
   try {
     const { branch } = req.params;
 
-    // Branch admin: the URL branch must match their own branch.
     if (isBranchAdmin(req) && branch !== req.user.branch) {
-      return res
-        .status(403)
-        .json({ message: "Access denied: You can only view your own branch." });
+      return res.status(403).json({ message: "Access denied: You can only view your own branch." });
     }
 
-    // Resolve month — from query param or current month
     const { year, month0 } = parseMonthParam(req.query.month);
     const { from, to }     = monthDateRange(year, month0);
 
-    // Both aggregations share the same match stage
-    const matchStage = {
-      branch,
-      date: { $gte: from, $lt: to },
-    };
+    const matchStage = { branch, date: { $gte: from, $lt: to } };
 
     const [stats] = await Entry.aggregate([
       { $match: matchStage },
@@ -122,12 +84,7 @@ const getBranchDashboard = async (req, res) => {
       { $sort: { count: -1 } },
     ]);
 
-    // technicianCount is headcount — not month-scoped (technicians don't
-    // disappear between months; this is always the live roster count)
-    const technicianCount = await User.countDocuments({
-      branch,
-      role: "technician",
-    });
+    const technicianCount = await User.countDocuments({ branch, role: "technician" });
 
     res.json({
       branch,
@@ -149,49 +106,54 @@ const getBranchDashboard = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branch/:branch/technicians
-//
-// NOTE: This endpoint is intentionally all-time.
-// Technician roster and their cumulative stats are not month-scoped.
-// Month-scoping the dashboard metrics does NOT affect this endpoint.
+// FIX: was N+1 (one aggregation per technician). Now a single aggregation
+//      with $in for all techIds, merged in memory. O(N) → O(1) DB calls.
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchTechnicians = async (req, res) => {
   try {
     const { branch } = req.params;
 
     if (isBranchAdmin(req) && branch !== req.user.branch) {
-      return res
-        .status(403)
-        .json({ message: "Access denied: You can only view your own branch." });
+      return res.status(403).json({ message: "Access denied: You can only view your own branch." });
     }
 
-    const technicians = await User.find({ branch, role: "technician" }).select("-password");
+    const technicians = await User
+      .find({ branch, role: "technician" })
+      .select("-password")
+      .lean();
 
-    const result = await Promise.all(
-      technicians.map(async (tech) => {
-        const [summary] = await Entry.aggregate([
-          { $match: { userId: tech._id } },
-          {
-            $group: {
-              _id:          null,
-              totalEntries: { $count: {} },
-              totalHours:   { $sum: "$hoursWorked" },
-              totalLabour:  { $sum: "$labourAmount" },
-            },
-          },
-        ]);
+    if (technicians.length === 0) return res.json([]);
 
-        return {
-          id:             tech._id,
-          name:           tech.name,
-          technicianId:   tech.technicianId,
-          email:          tech.email,
-          technicianType: tech.technicianType || null,
-          totalEntries:   summary?.totalEntries || 0,
-          totalHours:     summary?.totalHours   || 0,
-          totalLabour:    summary?.totalLabour  || 0,
-        };
-      })
-    );
+    const techIds = technicians.map((t) => t._id);
+
+    // Single aggregation replaces the previous Promise.all(technicians.map(...)) loop
+    const summaries = await Entry.aggregate([
+      { $match: { userId: { $in: techIds } } },
+      {
+        $group: {
+          _id:          "$userId",
+          totalEntries: { $count: {} },
+          totalHours:   { $sum: "$hoursWorked" },
+          totalLabour:  { $sum: "$labourAmount" },
+        },
+      },
+    ]);
+
+    const summaryMap = new Map(summaries.map((s) => [s._id.toString(), s]));
+
+    const result = technicians.map((tech) => {
+      const s = summaryMap.get(tech._id.toString()) || {};
+      return {
+        id:             tech._id,
+        name:           tech.name,
+        technicianId:   tech.technicianId,
+        email:          tech.email,
+        technicianType: tech.technicianType || null,
+        totalEntries:   s.totalEntries || 0,
+        totalHours:     s.totalHours   || 0,
+        totalLabour:    s.totalLabour  || 0,
+      };
+    });
 
     res.json(result);
   } catch (err) {
@@ -201,6 +163,9 @@ const getBranchTechnicians = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/technician/:userId  — paginated entries
+// FIX: added allTimeStats aggregation alongside the paginated fetch.
+//      Frontend AdminTechnicianDetail was computing totals from the current
+//      page only (20 entries), showing wrong numbers. allTimeStats fixes that.
 // ─────────────────────────────────────────────────────────────────────────────
 const getTechnicianEntries = async (req, res) => {
   try {
@@ -208,7 +173,7 @@ const getTechnicianEntries = async (req, res) => {
     const page  = parseInt(req.query.page)  || 1;
     const limit = parseInt(req.query.limit) || 20;
 
-    const targetUser = await User.findById(userId).select("-password");
+    const targetUser = await User.findById(userId).select("-password").lean();
     if (!targetUser)
       return res.status(404).json({ message: "Technician not found" });
 
@@ -218,20 +183,43 @@ const getTechnicianEntries = async (req, res) => {
       });
     }
 
-    const [entries, total] = await Promise.all([
+    const [entries, total, allTimeAgg] = await Promise.all([
       Entry.find({ userId })
         .sort({ date: -1 })
         .skip((page - 1) * limit)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Entry.countDocuments({ userId }),
+      Entry.aggregate([
+        { $match: { userId: targetUser._id } },
+        {
+          $group: {
+            _id:            null,
+            totalHours:     { $sum: "$hoursWorked" },
+            totalLabour:    { $sum: "$labourAmount" },
+            totalLeave:     { $sum: "$leaveDays" },
+            totalIncentive: { $sum: "$incentive" },
+          },
+        },
+      ]),
     ]);
 
+    const allTimeStats = allTimeAgg[0]
+      ? {
+          totalHours:     allTimeAgg[0].totalHours,
+          totalLabour:    allTimeAgg[0].totalLabour,
+          totalLeave:     allTimeAgg[0].totalLeave,
+          totalIncentive: allTimeAgg[0].totalIncentive,
+        }
+      : { totalHours: 0, totalLabour: 0, totalLeave: 0, totalIncentive: 0 };
+
     res.json({
-      user:  targetUser,
+      user: targetUser,
       entries,
       total,
       page,
       pages: Math.ceil(total / limit),
+      allTimeStats, // ← consumed by AdminTechnicianDetail totals strip
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -240,6 +228,8 @@ const getTechnicianEntries = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /api/admin/entry/:id
+// FIX: incentive was never processed. Admin sets it manually after month-end.
+//      It is the only path that writes a non-zero incentive to an entry document.
 // ─────────────────────────────────────────────────────────────────────────────
 const editEntry = async (req, res) => {
   try {
@@ -252,18 +242,30 @@ const editEntry = async (req, res) => {
       });
     }
 
-    const { category, vehicleNo, jcNo, hoursWorked, labourAmount, leaveDays } = req.body;
+    // FIX: incentive added to destructuring and updates
+    const {
+      category,
+      vehicleNo,
+      jcNo,
+      hoursWorked,
+      labourAmount,
+      leaveDays,
+      incentive,
+    } = req.body;
+
     const updates = {};
 
     if (category     !== undefined) updates.category     = category;
-if (vehicleNo !== undefined) {
-  updates.vehicleNo     = vehicleNo?.trim() || "";
-  updates.vehicleNoNorm = normalizeVehicleNo(vehicleNo?.trim() || "");
-}
+    if (vehicleNo    !== undefined) {
+      updates.vehicleNo     = vehicleNo?.trim() || "";
+      updates.vehicleNoNorm = normalizeVehicleNo(vehicleNo?.trim() || "");
+    }
     if (jcNo         !== undefined) updates.jcNo         = jcNo?.trim();
     if (hoursWorked  !== undefined) updates.hoursWorked  = Number(hoursWorked)  || 0;
     if (labourAmount !== undefined) updates.labourAmount = Number(labourAmount) || 0;
     if (leaveDays    !== undefined) updates.leaveDays    = Number(leaveDays)    || 0;
+    // FIX: was silently ignored before — now correctly saved
+    if (incentive    !== undefined) updates.incentive    = Math.max(0, Number(incentive) || 0);
 
     const updated = await Entry.findByIdAndUpdate(req.params.id, updates, {
       new:           true,
@@ -308,7 +310,7 @@ const exportTechnicianData = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const targetUser = await User.findById(userId).select("-password");
+    const targetUser = await User.findById(userId).select("-password").lean();
     if (!targetUser)
       return res.status(404).json({ message: "Technician not found" });
 
@@ -318,7 +320,7 @@ const exportTechnicianData = async (req, res) => {
       });
     }
 
-    const entries = await Entry.find({ userId }).sort({ date: -1 });
+    const entries = await Entry.find({ userId }).sort({ date: -1 }).lean();
     res.json({ user: targetUser, entries });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -327,6 +329,9 @@ const exportTechnicianData = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/analytics
+// FIX: from/to query params are now validated before being passed to MongoDB.
+//      Previously, new Date("abc") produced Invalid Date silently — the query
+//      ran but matched nothing, returning zeros with no error to the caller.
 // ─────────────────────────────────────────────────────────────────────────────
 const getAnalytics = async (req, res) => {
   try {
@@ -336,10 +341,29 @@ const getAnalytics = async (req, res) => {
 
     const matchStage = {};
     if (branch) matchStage.branch = branch;
+
     if (from || to) {
       matchStage.date = {};
-      if (from) matchStage.date.$gte = new Date(from);
-      if (to)   matchStage.date.$lte = new Date(to + "T23:59:59.999Z");
+
+      if (from) {
+        const fromDate = new Date(from);
+        if (isNaN(fromDate.getTime())) {
+          return res.status(400).json({
+            message: "Invalid 'from' date. Use YYYY-MM-DD format.",
+          });
+        }
+        matchStage.date.$gte = fromDate;
+      }
+
+      if (to) {
+        const toDate = new Date(to + "T23:59:59.999Z");
+        if (isNaN(toDate.getTime())) {
+          return res.status(400).json({
+            message: "Invalid 'to' date. Use YYYY-MM-DD format.",
+          });
+        }
+        matchStage.date.$lte = toDate;
+      }
     }
 
     const [overviewArr, byBranch, byCategory, byMonth, topTechs] =
