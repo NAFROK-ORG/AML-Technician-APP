@@ -14,7 +14,7 @@ import AdminAttendance from "./pages/AdminAttendance";
 import VehicleSearch from "./pages/VehicleSearch";
 import SecurityDashboard from "./pages/SecurityDashboard";   // ← NEW
 import VehicleLogBoard from "./pages/VehicleLogBoard";       // ← NEW
-
+import AuditLog from "./pages/AuditLog";
 /**
  * GuestRoute — blocks /login and /signup for already-authenticated users.
  *
@@ -134,7 +134,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
+<Route
+  path="/admin/audit-log"
+  element={
+    <ProtectedRoute role="superadmin">
+      <AuditLog />
+    </ProtectedRoute>
+  }
+/>
         {/*
           Vehicle Search — superadmin only.
           Branch admins cannot access this route — ProtectedRoute redirects them.
