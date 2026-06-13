@@ -35,7 +35,6 @@ const CAT_COLORS = {
   "SCHEDULE SERVICE": "#374151",
 };
 
-/* ─── Technician type badge styles (matches AdminTechnicianList) ──── */
 const TYPE_STYLE = {
   "MECHANIC":           { color: "#1E3A8A", bg: "#EEF2F7", border: "#BFDBFE" },
   "MECHANIC HELPER":    { color: "#0369A1", bg: "#E0F2FE", border: "#BAE6FD" },
@@ -112,6 +111,61 @@ const INJECTED = `
   .ad-page-btn:disabled { color: #CBD5E1; cursor: not-allowed; border-color: #EEF2F7; background: #F8FAFC; }
 
   /* ══════════════════════════════════════════════════════════════════
+     Vehicle search bar — ad-vs-* system
+  ══════════════════════════════════════════════════════════════════ */
+  .ad-vs-wrap { position: relative; }
+
+  .ad-vs-icon {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 48px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 1; color: #6B7A99;
+  }
+
+  .ad-vs-input {
+    width: 100%; box-sizing: border-box; height: 52px;
+    padding: 0 52px;
+    background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 0;
+    color: #0A1628; font-size: 16px; font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.06em;
+    outline: none; appearance: none; -webkit-appearance: none;
+    transition: border-color 0.15s, background 0.15s;
+    text-transform: uppercase;
+  }
+  .ad-vs-input::placeholder {
+    color: #CBD5E1; font-weight: 400; font-size: 13px;
+    letter-spacing: 0.04em; text-transform: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .ad-vs-input:focus { border-color: #1E3A8A; background: #FFFFFF; }
+
+  .ad-vs-clear {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 48px;
+    background: transparent; border: none; cursor: pointer;
+    color: #CBD5E1; font-size: 22px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .ad-vs-clear:hover { color: #DC2626; }
+
+  /* ── Search result banner ── */
+  .ad-vs-banner {
+    background: #EFF6FF; border: 1px solid #BFDBFE;
+    border-left: 3px solid #1E3A8A;
+    padding: 10px 16px; margin-bottom: 12px;
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 12px;
+  }
+  .ad-vs-banner-clear {
+    background: transparent; border: none; cursor: pointer;
+    color: #93C5FD; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    font-family: 'IBM Plex Sans', sans-serif; padding: 0;
+    transition: color 0.15s; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ad-vs-banner-clear:hover { color: #1E3A8A; }
+
+  /* ══════════════════════════════════════════════════════════════════
      Edit Entry Modal — em-* system (1:1 with TechnicianDashboard)
   ══════════════════════════════════════════════════════════════════ */
 
@@ -138,7 +192,6 @@ const INJECTED = `
   .em-sheet::-webkit-scrollbar-track { background: #F8FAFC; }
   .em-sheet::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
 
-  /* Progress bar */
   .em-progress {
     position: absolute; top: 0; left: 0; right: 0; height: 3px;
     background: #DDE3EE; border-radius: 16px 16px 0 0; overflow: hidden;
@@ -148,7 +201,6 @@ const INJECTED = `
     animation: emProgressFill 1.8s ease-in-out infinite alternate;
   }
 
-  /* Sticky header */
   .em-header {
     position: sticky; top: 0; z-index: 10;
     background: #FFFFFF; border-bottom: 1.5px solid #E2E8F0; padding: 14px 20px;
@@ -174,14 +226,11 @@ const INJECTED = `
   .em-close:hover:not(:disabled) { background: #F1F5F9; border-color: #94A3B8; }
   .em-close:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Form body */
   .em-body { display: flex; flex-direction: column; gap: 22px; padding: 24px 20px 36px; }
 
-  /* Error banner */
   .em-error-banner { background: #FEF2F2; border: 1.5px solid #FCA5A5; border-left: 4px solid #DC2626; padding: 14px 16px; }
   .em-error-text   { margin: 0; font-size: 13px; font-weight: 600; color: #991B1B; font-family: 'IBM Plex Sans', sans-serif; }
 
-  /* Field label + error */
   .em-label {
     display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.16em;
     text-transform: uppercase; color: #374151; margin-bottom: 8px; font-family: 'IBM Plex Sans', sans-serif;
@@ -189,7 +238,6 @@ const INJECTED = `
   .em-required  { color: #1E3A8A; margin-left: 3px; }
   .em-field-err { margin: 6px 0 0; font-size: 11px; font-weight: 600; color: #DC2626; letter-spacing: 0.02em; font-family: 'IBM Plex Sans', sans-serif; }
 
-  /* Input */
   .em-input {
     width: 100%; box-sizing: border-box; height: 56px; padding: 0 14px;
     background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 0;
@@ -201,16 +249,13 @@ const INJECTED = `
   .em-input--err         { border-color: #DC2626 !important; background: #FEF2F2 !important; }
   .em-input[type="date"] { color-scheme: light; font-size: 15px; }
 
-  /* Select chevron */
   .em-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%231E3A8A' d='M7 9.5L2 4.5h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; cursor: pointer;
   }
 
-  /* Two-column row */
   .em-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  /* Prefix blocks */
   .em-prefix {
     position: absolute; left: 0; top: 0; bottom: 0; width: 48px;
     display: flex; align-items: center; justify-content: center;
@@ -222,12 +267,10 @@ const INJECTED = `
   .em-prefix--lve     { background: #64748B; font-size: 11px; letter-spacing: 0.04em; }
   .em-prefix--inc     { background: #0891B2; font-size: 18px; }
 
-  /* Section divider */
   .em-divider       { display: flex; align-items: center; gap: 12px; margin: 4px 0 0; }
   .em-divider-line  { flex: 1; height: 1px; background: #E2E8F0; }
   .em-divider-label { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #94A3B8; white-space: nowrap; }
 
-  /* Submit + cancel */
   .em-submit {
     width: 100%; height: 60px; background: #1E3A8A; border: none; border-radius: 0;
     color: #FFFFFF; font-size: 13px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
@@ -248,7 +291,6 @@ const INJECTED = `
   .em-cancel:hover:not(:disabled) { color: #374151; }
   .em-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Spinner inside submit */
   .em-spinner {
     display: inline-block; width: 18px; height: 18px;
     border: 2.5px solid rgba(255,255,255,0.35); border-top-color: #FFFFFF;
@@ -265,11 +307,8 @@ const INJECTED = `
   }
 `;
 
-/* ─── Edit Entry Modal ───────────────────────────────────────────────
-   Rethemed to match TechnicianDashboard — bottom sheet, prefix-block
-   inputs, em-* CSS. Logic identical to original; Stepper replaced with
-   direct number inputs (much faster on mobile for large values).
-   Admin-only `incentive` field kept with teal (em-prefix--inc) prefix.
+/* ─── Edit Entry Modal ─────────────────────────────────────────────
+   Unchanged — identical to original.
 ─────────────────────────────────────────────────────────────────── */
 function EditEntryModal({ entry, onClose, onSaved }) {
   const [loading,     setLoading]     = useState(false);
@@ -313,14 +352,12 @@ function EditEntryModal({ entry, onClose, onSaved }) {
     >
       <div className="em-sheet" onClick={(e) => e.stopPropagation()}>
 
-        {/* Progress bar while saving */}
         {loading && (
           <div className="em-progress">
             <div className="em-progress-fill" />
           </div>
         )}
 
-        {/* Sticky header */}
         <div className="em-header">
           <div className="em-drag-handle" />
           <div className="em-header-row">
@@ -337,7 +374,6 @@ function EditEntryModal({ entry, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="em-body">
 
           {serverError && (
@@ -346,7 +382,6 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             </div>
           )}
 
-          {/* ── Date + Category ── */}
           <div className="em-row">
             <div>
               <label className="em-label">Date <span className="em-required">*</span></label>
@@ -378,7 +413,6 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             <div className="em-divider-line" />
           </div>
 
-          {/* ── JC No + Vehicle No ── */}
           <div className="em-row">
             <div>
               <label className="em-label">JC No <span className="em-required">*</span></label>
@@ -390,22 +424,20 @@ function EditEntryModal({ entry, onClose, onSaved }) {
               />
               {errors.jcNo && <p className="em-field-err">{errors.jcNo.message}</p>}
             </div>
-        <div>
-  <label className="em-label">Vehicle No <span style={{ color: "#E53E3E" }}>*</span></label>
-  <input
-    type="text"
-    placeholder="KA-01-AB-1234"
-    className={`em-input${errors.vehicleNo ? " em-input--err" : ""}`}
-    style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "14px", letterSpacing: "0.04em" }}
-    {...register("vehicleNo", {
-      required:  "Vehicle number is required",
-      validate: (v) => v.trim().length >= 2 || "Vehicle number is too short",
-    })}
-  />
-  {errors.vehicleNo && (
-    <p className="em-field-err">{errors.vehicleNo.message}</p>
-  )}
-</div>
+            <div>
+              <label className="em-label">Vehicle No <span style={{ color: "#E53E3E" }}>*</span></label>
+              <input
+                type="text"
+                placeholder="KA-01-AB-1234"
+                className={`em-input${errors.vehicleNo ? " em-input--err" : ""}`}
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "14px", letterSpacing: "0.04em" }}
+                {...register("vehicleNo", {
+                  required: "Vehicle number is required",
+                  validate: (v) => v.trim().length >= 2 || "Vehicle number is too short",
+                })}
+              />
+              {errors.vehicleNo && <p className="em-field-err">{errors.vehicleNo.message}</p>}
+            </div>
           </div>
 
           <div className="em-divider">
@@ -414,43 +446,37 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             <div className="em-divider-line" />
           </div>
 
-          {/* ── Labour Amount ── */}
           <div>
             <label className="em-label">Labour Amount <span className="em-required">*</span></label>
             <div style={{ position: "relative" }}>
               <div className="em-prefix em-prefix--primary">₹</div>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder="0"
+                type="number" inputMode="numeric" placeholder="0"
                 className={`em-input${errors.labourAmount ? " em-input--err" : ""}`}
                 style={{ paddingLeft: "62px" }}
-               {...register("labourAmount", {
-  required:      "Required",
-  min:           { value: 0,      message: "Min ₹0" },
-  max:           { value: 100000, message: "Max ₹1,00,000" },
-  valueAsNumber: true,
-})}
+                {...register("labourAmount", {
+                  required: "Required",
+                  min: { value: 0, message: "Min ₹0" },
+                  max: { value: 100000, message: "Max ₹1,00,000" },
+                  valueAsNumber: true,
+                })}
               />
             </div>
             {errors.labourAmount && <p className="em-field-err">{errors.labourAmount.message}</p>}
           </div>
 
-          {/* ── Hours Worked ── */}
           <div>
             <label className="em-label">Hours Worked <span className="em-required">*</span></label>
             <div style={{ position: "relative" }}>
               <div className="em-prefix em-prefix--hrs">HRS</div>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder="0"
+                type="number" inputMode="numeric" placeholder="0"
                 className={`em-input${errors.hoursWorked ? " em-input--err" : ""}`}
                 style={{ paddingLeft: "62px" }}
                 {...register("hoursWorked", {
-                  required:      "Required",
-                  min:           { value: 0,  message: "Min 0" },
-                  max:           { value: 24, message: "Max 24 hrs" },
+                  required: "Required",
+                  min: { value: 0, message: "Min 0" },
+                  max: { value: 24, message: "Max 24 hrs" },
                   valueAsNumber: true,
                 })}
               />
@@ -458,21 +484,18 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             {errors.hoursWorked && <p className="em-field-err">{errors.hoursWorked.message}</p>}
           </div>
 
-          {/* ── Leave Days ── */}
           <div>
             <label className="em-label">Leave Days</label>
             <div style={{ position: "relative" }}>
               <div className="em-prefix em-prefix--lve">LVE</div>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder="0"
+                type="number" inputMode="numeric" placeholder="0"
                 className={`em-input${errors.leaveDays ? " em-input--err" : ""}`}
                 style={{ paddingLeft: "62px" }}
                 {...register("leaveDays", {
-                  required:      "Required",
-                  min:           { value: 0,  message: "Min 0" },
-                  max:           { value: 31, message: "Max 31 days" },
+                  required: "Required",
+                  min: { value: 0, message: "Min 0" },
+                  max: { value: 31, message: "Max 31 days" },
                   valueAsNumber: true,
                 })}
               />
@@ -480,20 +503,17 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             {errors.leaveDays && <p className="em-field-err">{errors.leaveDays.message}</p>}
           </div>
 
-          {/* ── Incentive (admin-only field) ── */}
           <div>
             <label className="em-label">Incentive</label>
             <div style={{ position: "relative" }}>
               <div className="em-prefix em-prefix--inc">₹</div>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder="0"
+                type="number" inputMode="numeric" placeholder="0"
                 className={`em-input${errors.incentive ? " em-input--err" : ""}`}
                 style={{ paddingLeft: "62px" }}
                 {...register("incentive", {
-                  min:           { value: 0,      message: "Min ₹0" },
-                  max:           { value: 100000, message: "Max ₹1,00,000" },
+                  min: { value: 0, message: "Min ₹0" },
+                  max: { value: 100000, message: "Max ₹1,00,000" },
                   valueAsNumber: true,
                 })}
               />
@@ -501,15 +521,10 @@ function EditEntryModal({ entry, onClose, onSaved }) {
             {errors.incentive && <p className="em-field-err">{errors.incentive.message}</p>}
           </div>
 
-          {/* ── Save ── */}
           <button type="submit" className="em-submit" disabled={loading}>
-            {loading
-              ? <><span className="em-spinner" />Saving…</>
-              : "Save Changes"
-            }
+            {loading ? <><span className="em-spinner" />Saving…</> : "Save Changes"}
           </button>
 
-          {/* ── Cancel ── */}
           <button type="button" className="em-cancel" onClick={onClose} disabled={loading}>
             Cancel
           </button>
@@ -529,7 +544,6 @@ function EntryCard({ entry, onEdit, onDelete }) {
 
   return (
     <div className="ad-entry-card" style={{ borderLeft: `3px solid ${color}` }}>
-      {/* Top */}
       <div className="ad-entry-top" style={{
         padding: "14px 18px 12px",
         display: "flex", justifyContent: "space-between",
@@ -565,7 +579,6 @@ function EntryCard({ entry, onEdit, onDelete }) {
         </div>
       </div>
 
-      {/* Stats row */}
       <div className="ad-stats-4" style={{
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
         gap: "1px", background: C.border, borderTop: `1px solid ${C.border}`,
@@ -597,12 +610,18 @@ export default function AdminTechnicianDetail() {
   const { userId } = useParams();
   const navigate   = useNavigate();
 
-  const [data,         setData]         = useState(null);
-  const [loading,      setLoading]      = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [page,         setPage]         = useState(1);
-  const [editingEntry, setEditing]      = useState(null);
-  const [exporting,    setExporting]    = useState(false);
+  const [data,          setData]         = useState(null);
+  const [loading,       setLoading]      = useState(true);
+  const [accessDenied,  setAccessDenied] = useState(false);
+  const [page,          setPage]         = useState(1);
+  const [editingEntry,  setEditing]      = useState(null);
+  const [exporting,     setExporting]    = useState(false);
+
+  // ── Vehicle search state ──────────────────────────────────────────
+  // vehicleSearch  — live controlled input value
+  // debouncedVehicle — what actually fires the API call (350ms delayed)
+  const [vehicleSearch,     setVehicleSearch]     = useState("");
+  const [debouncedVehicle,  setDebouncedVehicle]  = useState("");
 
   /* Inject styles */
   useEffect(() => {
@@ -615,9 +634,34 @@ export default function AdminTechnicianDetail() {
     return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
   }, []);
 
+  // ── Debounce: 350ms after user stops typing, update debouncedVehicle
+  //    and reset to page 1. React 18 batches these two setState calls
+  //    inside setTimeout, so fetchData only fires once per search change.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedVehicle(vehicleSearch.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [vehicleSearch]);
+
+  // ── Instant clear: bypasses debounce delay ──────────────────────
+  const clearSearch = () => {
+    setVehicleSearch("");
+    setDebouncedVehicle("");
+    setPage(1);
+  };
+
+  // ── Derived search state ─────────────────────────────────────────
+  const isSearchMode = debouncedVehicle.length >= 2;
+
   const fetchData = useCallback(async () => {
     try {
-      const r = await api.get(`/api/admin/technician/${userId}?page=${page}&limit=20`);
+      // Build query string — only add vehicleNo when search is active
+      const params = new URLSearchParams({ page, limit: 20 });
+      if (isSearchMode) params.set("vehicleNo", debouncedVehicle);
+
+      const r = await api.get(`/api/admin/technician/${userId}?${params.toString()}`);
       setData(r.data);
       setAccessDenied(false);
     } catch (e) {
@@ -626,7 +670,7 @@ export default function AdminTechnicianDetail() {
     } finally {
       setLoading(false);
     }
-  }, [userId, page]);
+  }, [userId, page, debouncedVehicle, isSearchMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -640,6 +684,7 @@ export default function AdminTechnicianDetail() {
     }
   };
 
+  // Export always fetches ALL entries — unaffected by search mode
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -652,7 +697,7 @@ export default function AdminTechnicianDetail() {
         e.labourAmount, e.hoursWorked, e.leaveDays, e.incentive,
       ]);
       const csv  = [headers, ...rows]
-        .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
+        .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
         .join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
@@ -723,25 +768,41 @@ export default function AdminTechnicianDetail() {
     </div>
   );
 
- const { user, entries = [], total = 0, pages = 1, allTimeStats } = data || {};
+  // ── Destructure response ─────────────────────────────────────────
+  const {
+    user,
+    entries = [],
+    total = 0,
+    pages = 1,
+    allTimeStats,
+    filteredStats,         // null when not searching; populated when vehicleNo search active
+  } = data || {};
 
-const totals = allTimeStats
-  ? {
-      labour:    allTimeStats.totalLabour,
-      hours:     allTimeStats.totalHours,
-      incentive: allTimeStats.totalIncentive,
-      leave:     allTimeStats.totalLeave,
-    }
-  : entries.reduce(
-      (acc, e) => ({
-        labour:    acc.labour    + (e.labourAmount || 0),
-        hours:     acc.hours     + (e.hoursWorked  || 0),
-        incentive: acc.incentive + (e.incentive    || 0),
-        leave:     acc.leave     + (e.leaveDays    || 0),
-      }),
-      { labour: 0, hours: 0, incentive: 0, leave: 0 }
-    );
-  /* ── Technician type style helper ── */
+  // ── Which stats to show in the totals strip ──────────────────────
+  // Search mode  → filteredStats (totals for entries matching vehicle query)
+  // Normal mode  → allTimeStats  (always the full technician picture)
+  const displayStats = isSearchMode && filteredStats ? filteredStats : allTimeStats;
+
+  const displayTotals = displayStats
+    ? {
+        labour:    displayStats.totalLabour,
+        hours:     displayStats.totalHours,
+        incentive: displayStats.totalIncentive,
+        leave:     displayStats.totalLeave,
+      }
+    : entries.reduce(
+        (acc, e) => ({
+          labour:    acc.labour    + (e.labourAmount || 0),
+          hours:     acc.hours     + (e.hoursWorked  || 0),
+          incentive: acc.incentive + (e.incentive    || 0),
+          leave:     acc.leave     + (e.leaveDays    || 0),
+        }),
+        { labour: 0, hours: 0, incentive: 0, leave: 0 }
+      );
+
+  // Show totals strip when there's data to show
+  const showTotals = isSearchMode ? total > 0 : entries.length > 0;
+
   const typeStyle = user?.technicianType ? TYPE_STYLE[user.technicianType] : null;
 
   return (
@@ -784,7 +845,6 @@ const totals = allTimeStats
                 margin: "0 0 8px", lineHeight: 1,
               }}>{user?.name}</h1>
 
-              {/* ── Meta row — ID · Branch · Type · Entry count ── */}
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                 {user?.technicianId && (
                   <span style={{
@@ -797,7 +857,6 @@ const totals = allTimeStats
                 <span style={{ fontSize: "10px", color: C.dim }}>·</span>
                 <span style={{ fontSize: "12px", color: C.muted }}>{user?.branch} Branch</span>
 
-                {/* Technician type badge — rendered only when set */}
                 {typeStyle ? (
                   <>
                     <span style={{ fontSize: "10px", color: C.dim }}>·</span>
@@ -823,7 +882,13 @@ const totals = allTimeStats
                 <span style={{
                   fontFamily: "'IBM Plex Mono', monospace",
                   fontSize: "11px", color: C.dim,
-                }}>{total} entr{total === 1 ? "y" : "ies"}</span>
+                }}>
+                  {/* Total count always reflects full history, not filtered count */}
+                  {allTimeStats
+                    ? `${data?.total ?? 0}${isSearchMode ? ` of ${data?.total ?? 0}` : ""} entr${(data?.total ?? 0) === 1 ? "y" : "ies"}`
+                    : `${total} entr${total === 1 ? "y" : "ies"}`
+                  }
+                </span>
               </div>
             </div>
 
@@ -833,39 +898,147 @@ const totals = allTimeStats
           </div>
         </div>
 
-        {/* ── Totals strip ── */}
-        {entries.length > 0 && (
-          <div className="ad-a2 ad-totals-grid" style={{
-            display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "1px", background: C.border, border: `1px solid ${C.border}`,
+        {/* ── Totals strip ──────────────────────────────────────────────
+            Labels switch between "Total X" and "Vehicle X" depending on
+            search mode. Strip header appears only when search is active
+            to show which vehicle is being summarised.
+        ─────────────────────────────────────────────────────────────── */}
+        {showTotals && (
+          <div className="ad-a2" style={{
+            border: `1px solid ${C.border}`,
             marginBottom: "20px",
+            background: C.border, // gap colour between cells
           }}>
-            {[
-              { label: "Total Labour",    value: `₹${totals.labour.toLocaleString("en-IN")}`,    accent: C.amber   },
-              { label: "Total Hours",     value: `${totals.hours} hrs`,                           accent: C.success },
-              { label: "Total Incentive", value: `₹${totals.incentive.toLocaleString("en-IN")}`, accent: C.navy    },
-              { label: "Total Leave",     value: `${totals.leave} days`,                          accent: C.muted   },
-            ].map(({ label, value, accent }) => (
-              <div key={label} style={{
-                background: C.card, padding: "16px 14px",
-                borderTop: `3px solid ${accent}`,
+            {/* Context header — only in search mode */}
+            {isSearchMode && (
+              <div style={{
+                background: "#EFF6FF",
+                borderBottom: "1px solid #BFDBFE",
+                padding: "7px 14px",
+                display: "flex", alignItems: "center", gap: "8px",
               }}>
-                <div style={{
-                  fontSize: "8px", fontWeight: "700", letterSpacing: "0.16em",
-                  textTransform: "uppercase", color: C.dim, marginBottom: "8px",
-                }}>{label}</div>
-                <div style={{
-                  fontFamily: "'Barlow Condensed', sans-serif",
-                  fontSize: "22px", fontWeight: "700", color: C.ink, letterSpacing: "0.02em",
-                }}>{value}</div>
+                <span style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  textTransform: "uppercase", color: "#1E3A8A",
+                }}>Vehicle Totals</span>
+                <span style={{ fontSize: "9px", color: "#93C5FD" }}>·</span>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "11px", fontWeight: "700",
+                  color: "#1E3A8A", letterSpacing: "0.06em",
+                }}>{debouncedVehicle}</span>
               </div>
-            ))}
+            )}
+
+            <div className="ad-totals-grid" style={{
+              display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1px",
+            }}>
+              {[
+                { label: isSearchMode ? "Vehicle Labour"    : "Total Labour",    value: `₹${displayTotals.labour.toLocaleString("en-IN")}`,    accent: C.amber   },
+                { label: isSearchMode ? "Vehicle Hours"     : "Total Hours",     value: `${displayTotals.hours} hrs`,                           accent: C.success },
+                { label: isSearchMode ? "Vehicle Incentive" : "Total Incentive", value: `₹${displayTotals.incentive.toLocaleString("en-IN")}`, accent: C.navy    },
+                { label: isSearchMode ? "Vehicle Leave"     : "Total Leave",     value: `${displayTotals.leave} days`,                          accent: C.muted   },
+              ].map(({ label, value, accent }) => (
+                <div key={label} style={{
+                  background: C.card, padding: "16px 14px",
+                  borderTop: `3px solid ${accent}`,
+                }}>
+                  <div style={{
+                    fontSize: "8px", fontWeight: "700", letterSpacing: "0.16em",
+                    textTransform: "uppercase", color: C.dim, marginBottom: "8px",
+                  }}>{label}</div>
+                  <div style={{
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: "22px", fontWeight: "700", color: C.ink, letterSpacing: "0.02em",
+                  }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Vehicle search bar ────────────────────────────────────────
+            Always visible. Searches all entries for this technician
+            server-side — pagination runs on top of the filtered set.
+        ─────────────────────────────────────────────────────────────── */}
+        <div className="ad-a3" style={{ marginBottom: "16px" }}>
+          <div style={{
+            fontSize: "10px", fontWeight: "700", letterSpacing: "0.16em",
+            textTransform: "uppercase", color: C.mid, marginBottom: "8px",
+          }}>Search by Vehicle No</div>
+
+          <div className="ad-vs-wrap">
+            {/* Search icon */}
+            <div className="ad-vs-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="10.5" y1="10.5" x2="13.5" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+              </svg>
+            </div>
+
+            <input
+              type="text"
+              className="ad-vs-input"
+              value={vehicleSearch}
+              onChange={(e) => setVehicleSearch(e.target.value.toUpperCase())}
+              placeholder="e.g. KA01AB1234 or last 4 digits…"
+              autoCorrect="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              aria-label="Search entries by vehicle number"
+            />
+
+            {vehicleSearch && (
+              <button
+                type="button"
+                className="ad-vs-clear"
+                onClick={clearSearch}
+                aria-label="Clear vehicle search"
+              >×</button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Search result banner — shown only when search is active ── */}
+        {isSearchMode && (
+          <div className="ad-vs-banner">
+            <div style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              minWidth: 0, overflow: "hidden",
+            }}>
+              <span style={{
+                fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                textTransform: "uppercase", color: "#1E3A8A", flexShrink: 0,
+              }}>Results</span>
+
+              <span style={{ fontSize: "9px", color: "#93C5FD" }}>·</span>
+
+              <span style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "12px", fontWeight: "700", color: "#1E3A8A",
+                letterSpacing: "0.06em",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>{debouncedVehicle}</span>
+
+              <span style={{ fontSize: "9px", color: "#93C5FD", flexShrink: 0 }}>·</span>
+
+              <span style={{
+                fontSize: "12px", color: C.mid,
+                fontFamily: "'IBM Plex Sans', sans-serif", flexShrink: 0,
+              }}>
+                {total} {total === 1 ? "entry" : "entries"} found
+              </span>
+            </div>
+
+            <button className="ad-vs-banner-clear" onClick={clearSearch}>
+              Clear ×
+            </button>
           </div>
         )}
 
         {/* ── Entries ── */}
         {entries.length === 0 ? (
-          <div className="ad-a3" style={{
+          <div className="ad-a4" style={{
             background: C.card, border: `1px solid ${C.border}`,
             padding: "60px 20px", textAlign: "center",
           }}>
@@ -874,13 +1047,30 @@ const totals = allTimeStats
               fontSize: "20px", fontWeight: "700",
               color: C.dim, letterSpacing: "0.08em",
               textTransform: "uppercase", marginBottom: "6px",
-            }}>No Entries Yet</div>
+            }}>
+              {isSearchMode ? "No Entries Found" : "No Entries Yet"}
+            </div>
             <p style={{ fontSize: "13px", color: C.dim, margin: 0 }}>
-              This technician hasn't logged any work entries.
+              {isSearchMode
+                ? `No job cards logged for "${debouncedVehicle}". Try a different query.`
+                : "This technician hasn't logged any work entries."
+              }
             </p>
+            {isSearchMode && (
+              <button
+                onClick={clearSearch}
+                style={{
+                  marginTop: "16px", padding: "9px 22px",
+                  background: "transparent", border: `1px solid ${C.border}`,
+                  color: C.muted, fontSize: "10px", fontWeight: "700",
+                  letterSpacing: "0.14em", textTransform: "uppercase",
+                  cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+                }}
+              >Clear Search</button>
+            )}
           </div>
         ) : (
-          <div className="ad-a3">
+          <div className="ad-a4">
             <div style={{
               display: "flex", flexDirection: "column", gap: "1px",
               background: C.border, border: `1px solid ${C.border}`,
@@ -896,7 +1086,7 @@ const totals = allTimeStats
               ))}
             </div>
 
-            {/* Pagination */}
+            {/* Pagination — works identically in both normal and search mode */}
             {pages > 1 && (
               <div style={{
                 display: "flex", justifyContent: "center",
@@ -924,6 +1114,7 @@ const totals = allTimeStats
             )}
           </div>
         )}
+
       </div>
     </div>
   );
