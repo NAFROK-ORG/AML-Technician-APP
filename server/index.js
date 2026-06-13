@@ -12,7 +12,7 @@ const entryRoutes       = require("./routes/entryRoutes");
 const adminRoutes       = require("./routes/adminRoutes");
 const attendanceRoutes  = require("./routes/attendanceRoutes");
 const searchRoutes      = require("./routes/searchRoutes");       // ← new
-
+const auditRoutes = require("./routes/auditRoutes");
 const app = express();
 
 connectDB();
@@ -28,7 +28,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/security", securityRoutes);
-
+app.use("/api/audit", auditRoutes);
 app.get("/", (req, res) =>
   res.json({ message: "Ashok Leyland API running" })
 );
