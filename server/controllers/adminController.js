@@ -107,10 +107,6 @@ const getBranchDashboard = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branch/:branch/technicians?month=YYYY-MM
-//
-// FIX: Stats (entries, hours, labour) are now scoped to the requested calendar
-// month — same month param pattern used by getBranchDashboard. Falls back to
-// the current UTC month when no param is sent (e.g. old clients).
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchTechnicians = async (req, res) => {
   try {
@@ -120,7 +116,6 @@ const getBranchTechnicians = async (req, res) => {
       return res.status(403).json({ message: "Access denied: You can only view your own branch." });
     }
 
-    // ── Parse month param — defaults to current UTC month if absent ──
     const { year, month0 } = parseMonthParam(req.query.month);
     const { from, to }     = monthDateRange(year, month0);
 
@@ -133,12 +128,11 @@ const getBranchTechnicians = async (req, res) => {
 
     const techIds = technicians.map((t) => t._id);
 
-    // ── Aggregate only entries within the requested month ──
     const summaries = await Entry.aggregate([
       {
         $match: {
           userId: { $in: techIds },
-          date:   { $gte: from, $lt: to },   // ← month-scoped
+          date:   { $gte: from, $lt: to },
         },
       },
       {
@@ -175,12 +169,23 @@ const getBranchTechnicians = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/technician/:userId  — paginated entries
+//
+// NEW: Accepts optional ?vehicleNo=<query> for in-page vehicle number search.
+//   - Applies a flexible regex filter (handles KA-01-AB-1234 vs KA01AB1234)
+//   - Pagination runs on top of the filtered result set
+//   - allTimeStats is ALWAYS unfiltered (full technician totals, invariant)
+//   - filteredStats is returned only when vehicleNo search is active (null otherwise)
+//   - vehicleQuery echoed back so the client knows what the backend received
 // ─────────────────────────────────────────────────────────────────────────────
 const getTechnicianEntries = async (req, res) => {
   try {
     const { userId } = req.params;
-    const page  = parseInt(req.query.page)  || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page       = parseInt(req.query.page)  || 1;
+    const limit      = parseInt(req.query.limit) || 20;
+
+    // ── Parse optional vehicle search param ──────────────────────
+    const vehicleRaw      = (req.query.vehicleNo || "").trim();
+    const isVehicleSearch = vehicleRaw.length >= 2;
 
     const targetUser = await User.findById(userId).select("-password").lean();
     if (!targetUser)
@@ -192,13 +197,37 @@ const getTechnicianEntries = async (req, res) => {
       });
     }
 
-    const [entries, total, allTimeAgg] = await Promise.all([
-      Entry.find({ userId })
+    // ── Build filters ─────────────────────────────────────────────
+    // queryFilter: used with find() + countDocuments()
+    //   Mongoose coerces string userId → ObjectId here, so string is safe.
+    const queryFilter = { userId };
+
+    // filteredAggFilter: used inside aggregate() $match
+    //   Mongoose does NOT auto-cast in aggregation — must pass ObjectId explicitly.
+    let filteredAggFilter = null;
+
+    if (isVehicleSearch) {
+      // Strip hyphens/spaces from query, build flexible regex that
+      // matches the number with or without separators — mirrors searchController.
+      const cleaned     = vehicleRaw.replace(/[\s-]/g, "");
+      const flexPattern = cleaned.split("").join("[\\s-]*");
+      const vehicleRegex = { $regex: flexPattern, $options: "i" };
+
+      queryFilter.vehicleNo  = vehicleRegex;
+      filteredAggFilter      = { userId: targetUser._id, vehicleNo: vehicleRegex };
+    }
+
+    // ── Run all DB ops in parallel ────────────────────────────────
+    const [entries, total, allTimeAgg, filteredAgg] = await Promise.all([
+      Entry.find(queryFilter)
         .sort({ date: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Entry.countDocuments({ userId }),
+
+      Entry.countDocuments(queryFilter),
+
+      // allTimeStats — NEVER filtered by vehicle (always the full picture)
       Entry.aggregate([
         { $match: { userId: targetUser._id } },
         {
@@ -211,8 +240,25 @@ const getTechnicianEntries = async (req, res) => {
           },
         },
       ]),
+
+      // filteredStats — only runs when vehicle search is active
+      isVehicleSearch
+        ? Entry.aggregate([
+            { $match: filteredAggFilter },
+            {
+              $group: {
+                _id:            null,
+                totalHours:     { $sum: "$hoursWorked" },
+                totalLabour:    { $sum: "$labourAmount" },
+                totalLeave:     { $sum: "$leaveDays" },
+                totalIncentive: { $sum: "$incentive" },
+              },
+            },
+          ])
+        : Promise.resolve(null),
     ]);
 
+    // ── Shape allTimeStats ────────────────────────────────────────
     const allTimeStats = allTimeAgg[0]
       ? {
           totalHours:     allTimeAgg[0].totalHours,
@@ -222,13 +268,28 @@ const getTechnicianEntries = async (req, res) => {
         }
       : { totalHours: 0, totalLabour: 0, totalLeave: 0, totalIncentive: 0 };
 
+    // ── Shape filteredStats (null when not searching) ─────────────
+    const filteredStats = isVehicleSearch
+      ? (filteredAgg?.[0]
+          ? {
+              totalHours:     filteredAgg[0].totalHours,
+              totalLabour:    filteredAgg[0].totalLabour,
+              totalLeave:     filteredAgg[0].totalLeave,
+              totalIncentive: filteredAgg[0].totalIncentive,
+            }
+          : { totalHours: 0, totalLabour: 0, totalLeave: 0, totalIncentive: 0 }
+        )
+      : null;
+
     res.json({
-      user: targetUser,
+      user:         targetUser,
       entries,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      pages:        Math.ceil(total / limit),
       allTimeStats,
+      filteredStats,                                    // null when no search active
+      vehicleQuery: isVehicleSearch ? vehicleRaw : "", // echoed back for client
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
