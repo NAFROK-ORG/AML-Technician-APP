@@ -5,14 +5,13 @@ import api from "../api/axios";
 import { useAuthStore } from "../store/authStore";
 import { BRANCHES, TECHNICIAN_TYPES } from "../utils/constants";
 
+/* ─── Design tokens ──────────────────────────────────────────────── */
 const C = {
   pageBg:  "#EEF2F7",
   card:    "#FFFFFF",
   cardAlt: "#F8FAFC",
   border:  "#DDE3EE",
-  borderL: "#F1F5F9",
   navy:    "#1E3A8A",
-  navyHov: "#1E40AF",
   ink:     "#0A1628",
   mid:     "#374151",
   muted:   "#6B7A99",
@@ -33,6 +32,29 @@ const TYPE_STYLE = {
 
 const FILTER_OPTIONS = ["ALL", ...TECHNICIAN_TYPES, "PENDING"];
 
+/* ─── Month helpers — mirrors AdminBranchDashboard ───────────────── */
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+/**
+ * currentMonthParam() → "YYYY-MM"
+ * Computed once on mount; stable for the entire session.
+ * Backend builds the UTC date range from this string.
+ */
+const currentMonthParam = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
+/** monthLabel("2025-06") → "June 2025" */
+const monthLabel = (param) => {
+  const [y, m] = param.split("-").map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+};
+
+/* ─── Injected styles ────────────────────────────────────────────── */
 const INJECTED = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
@@ -116,7 +138,6 @@ const INJECTED = `
   }
   .al-back-btn:hover { color: #1E3A8A; }
 
-  /* ── Superadmin action buttons on card ── */
   .al-action-btn {
     padding: 5px 9px;
     border: 1px solid #DDE3EE; background: #F8FAFC;
@@ -130,7 +151,6 @@ const INJECTED = `
   .al-action-btn.edit:hover  { border-color: #1E3A8A; color: #1E3A8A; background: #EEF2F7; }
   .al-action-btn.del:hover   { border-color: #DC2626; color: #DC2626; background: #FEF2F2; }
 
-  /* ── Modals ── */
   .al-modal-overlay {
     position: fixed; inset: 0; z-index: 300;
     background: rgba(10, 22, 40, 0.82);
@@ -207,11 +227,15 @@ const INJECTED = `
   }
 `;
 
+/* ─── Component ──────────────────────────────────────────────────── */
 export default function AdminTechnicianList() {
   const { branch } = useParams();
   const navigate   = useNavigate();
   const { user: authUser } = useAuthStore();
   const isSuperAdmin = authUser?.role === "superadmin";
+
+  // Stable for the full session — a new calendar month = a new page load anyway
+  const [monthParam] = useState(currentMonthParam);
 
   // ── List state ──
   const [technicians, setTechnicians] = useState([]);
@@ -231,9 +255,9 @@ export default function AdminTechnicianList() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError,   setDeleteError]   = useState("");
 
-  // ── Inject styles ──
+  // ── Style injection ──
   useEffect(() => {
-    const id = "al-styles";
+    const id = "al-styles-technician-list";
     if (!document.getElementById(id)) {
       const el = document.createElement("style");
       el.id = id; el.textContent = INJECTED;
@@ -242,10 +266,12 @@ export default function AdminTechnicianList() {
     return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
   }, []);
 
-  // ── Fetch technicians ──
+  // ── Fetch technicians scoped to current month ──
   useEffect(() => {
     setLoading(true); setError("");
-    api.get(`/api/admin/branch/${encodeURIComponent(branch)}/technicians`)
+    api.get(`/api/admin/branch/${encodeURIComponent(branch)}/technicians`, {
+      params: { month: monthParam },   // ← month-scoped stats
+    })
       .then(r => setTechnicians(r.data))
       .catch(err => {
         if (err.response?.status === 403) {
@@ -255,7 +281,7 @@ export default function AdminTechnicianList() {
         }
       })
       .finally(() => setLoading(false));
-  }, [branch]);
+  }, [branch, monthParam]);
 
   // ── Edit handlers ──
   const openEdit = (e, tech) => {
@@ -264,18 +290,17 @@ export default function AdminTechnicianList() {
     setEditForm({
       name:           tech.name          || "",
       technicianId:   tech.technicianId  || "",
-      branch:         branch,              // pre-fill from current URL branch
+      branch,
       technicianType: tech.technicianType || "",
     });
     setEditError("");
   };
 
   const handleEditSubmit = async () => {
-    if (!editForm.name.trim())  { setEditError("Name is required."); return; }
-    if (!editForm.branch)       { setEditError("Branch is required."); return; }
+    if (!editForm.name.trim()) { setEditError("Name is required."); return; }
+    if (!editForm.branch)      { setEditError("Branch is required."); return; }
 
-    setEditLoading(true);
-    setEditError("");
+    setEditLoading(true); setEditError("");
     try {
       const payload = {
         name:           editForm.name.trim(),
@@ -286,10 +311,8 @@ export default function AdminTechnicianList() {
       await api.put(`/api/admin/user/${editTarget.id}`, payload);
 
       if (payload.branch !== branch) {
-        // Technician moved to a different branch — remove from this list
         setTechnicians(prev => prev.filter(t => t.id !== editTarget.id));
       } else {
-        // Update in place
         setTechnicians(prev => prev.map(t =>
           t.id === editTarget.id
             ? { ...t, name: payload.name, technicianId: payload.technicianId, technicianType: payload.technicianType }
@@ -312,8 +335,7 @@ export default function AdminTechnicianList() {
   };
 
   const handleDeleteConfirm = async () => {
-    setDeleteLoading(true);
-    setDeleteError("");
+    setDeleteLoading(true); setDeleteError("");
     try {
       await api.delete(`/api/admin/user/${deleteTarget.id}`);
       setTechnicians(prev => prev.filter(t => t.id !== deleteTarget.id));
@@ -326,8 +348,8 @@ export default function AdminTechnicianList() {
   };
 
   // ── Derived list ──
-  const sorted  = [...technicians].sort((a, b) => b.totalLabour - a.totalLabour);
-  const rankOf  = (t) => sorted.findIndex(x => x.id === t.id);
+  const sorted = [...technicians].sort((a, b) => b.totalLabour - a.totalLabour);
+  const rankOf = (t) => sorted.findIndex(x => x.id === t.id);
 
   const afterSearch = technicians.filter(t =>
     !search ||
@@ -358,15 +380,15 @@ export default function AdminTechnicianList() {
 
       <div style={{ maxWidth: "680px", margin: "0 auto", padding: "24px 16px 64px" }}>
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="al-a1">
           <button className="al-back-btn" onClick={() => navigate("/admin")}>
             ← Branches
           </button>
           <div style={{
             display: "flex", alignItems: "center", gap: "12px",
-            flexWrap: "wrap", marginBottom: "24px",
-            paddingBottom: "20px", borderBottom: `1px solid ${C.border}`,
+            flexWrap: "wrap", marginBottom: "8px",
+            paddingBottom: "16px", borderBottom: `1px solid ${C.border}`,
           }}>
             <div>
               <div style={{
@@ -398,9 +420,26 @@ export default function AdminTechnicianList() {
               </div>
             )}
           </div>
+
+          {/* ── Month scope label ── */}
+          {!loading && !error && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              marginBottom: "20px",
+            }}>
+              <div style={{ width: "3px", height: "12px", background: C.navy, flexShrink: 0 }} />
+              <span style={{
+                fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                textTransform: "uppercase", color: C.muted,
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}>
+                Stats for {monthLabel(monthParam)}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Search */}
+        {/* ── Search ── */}
         {!loading && !error && technicians.length > 2 && (
           <div className="al-a2 al-search-wrap">
             <span className="al-search-icon">⌕</span>
@@ -417,7 +456,7 @@ export default function AdminTechnicianList() {
           </div>
         )}
 
-        {/* Type filter pills */}
+        {/* ── Type filter pills ── */}
         {!loading && !error && technicians.length > 0 && (
           <div className="al-filter-strip al-a2">
             {FILTER_OPTIONS.map((f) => {
@@ -436,7 +475,7 @@ export default function AdminTechnicianList() {
           </div>
         )}
 
-        {/* States */}
+        {/* ── States ── */}
         {loading ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <div style={{
@@ -470,10 +509,9 @@ export default function AdminTechnicianList() {
               style={{
                 marginTop: "16px", padding: "10px 20px",
                 background: "transparent", border: `1px solid ${C.border}`,
-                borderRadius: "0", color: C.muted,
-                fontSize: "10px", fontWeight: "700", letterSpacing: "0.14em",
-                textTransform: "uppercase", cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
+                color: C.muted, fontSize: "10px", fontWeight: "700",
+                letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer",
+                fontFamily: "'IBM Plex Sans', sans-serif", borderRadius: "0",
               }}
             >← Back to Dashboard</button>
           </div>
@@ -571,12 +609,8 @@ export default function AdminTechnicianList() {
                         style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}
                         onClick={e => e.stopPropagation()}
                       >
-                        <button className="al-action-btn edit" onClick={e => openEdit(e, tech)}>
-                          Edit
-                        </button>
-                        <button className="al-action-btn del" onClick={e => openDelete(e, tech)}>
-                          Delete
-                        </button>
+                        <button className="al-action-btn edit" onClick={e => openEdit(e, tech)}>Edit</button>
+                        <button className="al-action-btn del"  onClick={e => openDelete(e, tech)}>Delete</button>
                         <span style={{ color: C.dim, fontSize: "20px", lineHeight: 1, marginLeft: "2px" }}>›</span>
                       </div>
                     ) : (
@@ -587,15 +621,15 @@ export default function AdminTechnicianList() {
                     )}
                   </div>
 
-                  {/* Stats row */}
+                  {/* Stats row — month-scoped */}
                   <div className="al-tech-stats" style={{
                     display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
                     gap: "1px", background: C.border, border: `1px solid ${C.border}`,
                   }}>
                     {[
-                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",            color: C.ink     },
-                      { label: "Hours",   value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",   color: C.success },
-                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`,  color: C.amber   },
+                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",           color: C.ink     },
+                      { label: "Hours",   value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",  color: C.success },
+                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber   },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ background: C.cardAlt, padding: "10px 8px", textAlign: "center" }}>
                         <div style={{
@@ -631,95 +665,59 @@ export default function AdminTechnicianList() {
       {editTarget && (
         <div className="al-modal-overlay" onClick={() => !editLoading && setEditTarget(null)}>
           <div className="al-modal-card" onClick={e => e.stopPropagation()}>
-
             <div className="al-modal-header">
-              <div className="al-modal-icon" style={{ background: "#EEF2F7", border: "1.5px solid #DDE3EE" }}>
-                ✏️
-              </div>
+              <div className="al-modal-icon" style={{ background: "#EEF2F7", border: "1.5px solid #DDE3EE" }}>✏️</div>
               <div>
                 <div className="al-modal-title">Edit Technician</div>
-                <div className="al-modal-subtitle" style={{
-                  fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.06em",
-                }}>
+                <div className="al-modal-subtitle" style={{ fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.06em" }}>
                   {editTarget.technicianId || editTarget.name}
                 </div>
               </div>
             </div>
 
-            {/* Name */}
             <div className="al-modal-field">
               <label className="al-modal-label">Display Name</label>
-              <input
-                className="al-modal-input"
-                type="text"
-                value={editForm.name}
+              <input className="al-modal-input" type="text" value={editForm.name}
                 onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                disabled={editLoading}
-                placeholder="Full name"
-              />
+                disabled={editLoading} placeholder="Full name" />
             </div>
 
-            {/* Technician ID */}
             <div className="al-modal-field">
               <label className="al-modal-label">Technician ID</label>
-              <input
-                className="al-modal-input"
-                type="text"
-                value={editForm.technicianId}
+              <input className="al-modal-input" type="text" value={editForm.technicianId}
                 onChange={e => setEditForm(f => ({ ...f, technicianId: e.target.value }))}
-                disabled={editLoading}
-                placeholder="e.g. TEC-2045"
-                style={{ fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.06em" }}
-              />
+                disabled={editLoading} placeholder="e.g. TEC-2045"
+                style={{ fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.06em" }} />
             </div>
 
-            {/* Branch */}
             <div className="al-modal-field">
               <label className="al-modal-label">Branch</label>
-              <select
-                className="al-modal-input"
-                value={editForm.branch}
+              <select className="al-modal-input" value={editForm.branch}
                 onChange={e => setEditForm(f => ({ ...f, branch: e.target.value }))}
-                disabled={editLoading}
-              >
+                disabled={editLoading}>
                 <option value="">Select branch</option>
-                {BRANCHES.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
 
-            {/* Technician Type */}
             <div className="al-modal-field" style={{ marginBottom: "20px" }}>
               <label className="al-modal-label">Technician Role</label>
-              <select
-                className="al-modal-input"
-                value={editForm.technicianType}
+              <select className="al-modal-input" value={editForm.technicianType}
                 onChange={e => setEditForm(f => ({ ...f, technicianType: e.target.value }))}
-                disabled={editLoading}
-              >
+                disabled={editLoading}>
                 <option value="">Not set</option>
-                {TECHNICIAN_TYPES.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                {TECHNICIAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
 
             {editError && <div className="al-modal-error">{editError}</div>}
 
             <div className="al-modal-btn-row">
-              <button
-                className="al-modal-btn cancel"
-                onClick={() => setEditTarget(null)}
-                disabled={editLoading}
-              >Cancel</button>
-              <button
-                className="al-modal-btn primary"
-                onClick={handleEditSubmit}
-                disabled={editLoading}
-              >{editLoading ? "Saving…" : "Save Changes"}</button>
+              <button className="al-modal-btn cancel" onClick={() => setEditTarget(null)} disabled={editLoading}>Cancel</button>
+              <button className="al-modal-btn primary" onClick={handleEditSubmit} disabled={editLoading}>
+                {editLoading ? "Saving…" : "Save Changes"}
+              </button>
             </div>
-
           </div>
         </div>
       )}
@@ -728,18 +726,14 @@ export default function AdminTechnicianList() {
       {deleteTarget && (
         <div className="al-modal-overlay" onClick={() => !deleteLoading && setDeleteTarget(null)}>
           <div className="al-modal-card" onClick={e => e.stopPropagation()}>
-
             <div className="al-modal-header">
-              <div className="al-modal-icon" style={{ background: "#FEF2F2", border: "1.5px solid #FECACA" }}>
-                🗑️
-              </div>
+              <div className="al-modal-icon" style={{ background: "#FEF2F2", border: "1.5px solid #FECACA" }}>🗑️</div>
               <div>
                 <div className="al-modal-title" style={{ color: C.danger }}>Delete Account</div>
                 <div className="al-modal-subtitle">This action cannot be undone</div>
               </div>
             </div>
 
-            {/* Who is being deleted */}
             <div style={{
               background: C.cardAlt, border: `1px solid ${C.border}`,
               borderLeft: `3px solid ${C.danger}`,
@@ -767,18 +761,11 @@ export default function AdminTechnicianList() {
             {deleteError && <div className="al-modal-error">{deleteError}</div>}
 
             <div className="al-modal-btn-row">
-              <button
-                className="al-modal-btn cancel"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleteLoading}
-              >Cancel</button>
-              <button
-                className="al-modal-btn danger"
-                onClick={handleDeleteConfirm}
-                disabled={deleteLoading}
-              >{deleteLoading ? "Deleting…" : "Delete Account"}</button>
+              <button className="al-modal-btn cancel" onClick={() => setDeleteTarget(null)} disabled={deleteLoading}>Cancel</button>
+              <button className="al-modal-btn danger" onClick={handleDeleteConfirm} disabled={deleteLoading}>
+                {deleteLoading ? "Deleting…" : "Delete Account"}
+              </button>
             </div>
-
           </div>
         </div>
       )}
