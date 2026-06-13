@@ -164,6 +164,39 @@ const CORP_STYLES = `
     border-bottom: 2px solid #DC2626;
   }
 
+  .corp-password-wrapper {
+    position: relative;
+  }
+
+  .corp-password-wrapper .corp-input {
+    padding-right: 48px;
+  }
+
+  .corp-toggle-password {
+    position: absolute;
+    right: 0;
+    bottom: 9px;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    color: #6B7A99;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: 'IBM Plex Sans', sans-serif;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .corp-toggle-password:hover {
+    color: #1E3A8A;
+  }
+
   .corp-field-error {
     margin: 6px 0 0;
     font-size: 12px;
@@ -285,6 +318,7 @@ export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm();
 
@@ -357,14 +391,25 @@ export default function Login() {
 
               <div className="corp-field">
                 <label className="corp-label" htmlFor="login-password">Password</label>
-                <input
-                  id="login-password"
-                  className={`corp-input${errors.password ? " field-error" : ""}`}
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  {...register("password", { required: "Password is required" })}
-                />
+                <div className="corp-password-wrapper">
+                  <input
+                    id="login-password"
+                    className={`corp-input${errors.password ? " field-error" : ""}`}
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    {...register("password", { required: "Password is required" })}
+                  />
+                  <button
+                    type="button"
+                    className="corp-toggle-password"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
                 {errors.password && <p className="corp-field-error">{errors.password.message}</p>}
               </div>
 
