@@ -55,7 +55,6 @@ const entrySchema = new mongoose.Schema(
       // since there were no security logs then. Old entries are permanently
       // excluded from linking queries (which filter by vehicleNoNorm).
     },
-    // ── NEW FIELD ─────────────────────────────────────────────────────────────
     vehicleNoNorm: {
       type: String,
       // Optional — only populated for entries created AFTER this feature deploys.
@@ -72,7 +71,6 @@ const entrySchema = new mongoose.Schema(
       // Linking query: { vehicleNoNorm: log.vehicleNoNorm, branch: log.branch,
       //                  createdAt: { $gte: log.loggedAt, $lt: nextLog?.loggedAt } }
     },
-    // ─────────────────────────────────────────────────────────────────────────
     jcNo: {
       type:     String,
       required: [true, "JC Number is required"],
@@ -110,20 +108,37 @@ const entrySchema = new mongoose.Schema(
 
 /* ─── Indexes ──────────────────────────────────────────────────────────────────
    Existing indexes (unchanged):
-   { branch: 1 }          — admin branch-scoped queries
-   { userId: 1 }          — technician's own entry list
-   { technicianType: 1 }  — analytics grouping by type
-   { vehicleNo: 1 }       — vehicle search support
+   { branch: 1 }          — admin branch-scoped aggregations
+   { userId: 1 }          — kept for backward compat / populate calls
+   { technicianType: 1 }  — analytics grouping by technician type
+   { vehicleNo: 1 }       — legacy vehicle search support
 
-   No new index for vehicleNoNorm — the linking queries use createdAt as the
-   primary filter driver, and vehicleNoNorm is an equality match on a small
-   result set (entries for one vehicle in one branch). At current scale this
-   is fast. A compound index can be added later as a zero-risk additive change.
+   ── NEW (additive only — Atlas builds in background, zero downtime) ──────────
+
+   { vehicleNoNorm: 1, branch: 1, createdAt: 1 }
+   Covers the batched security-linking query in getBoardLogs:
+     Entry.find({ vehicleNoNorm: { $in: [...] }, branch, createdAt: { $gte: ... } })
+   Without this, every board load was a full collection scan on vehicleNoNorm
+   (an unindexed field). With it, MongoDB narrows to exact vehicle+branch sets
+   and range-scans createdAt within those. Immediate improvement on busy days.
+
+   { userId: 1, date: -1 }
+   Covers two hot read paths:
+     1. getTechnicianEntries  → find({ userId }).sort({ date: -1 }).skip().limit()
+        Index now drives both the match AND the sort — no in-memory sort stage.
+     2. getAdminAttendance + getMonthlyIncentive
+        → find({ userId: { $in: [...] }, date: { $gte, $lt } })
+        MongoDB range-scans date per userId instead of loading all user entries
+        and filtering in memory.
+   MongoDB can traverse this index in either direction, so date ASC queries
+   (rare but present in analytics) also benefit.
 ─────────────────────────────────────────────────────────────────────────────── */
 
 entrySchema.index({ branch: 1 });
 entrySchema.index({ userId: 1 });
 entrySchema.index({ technicianType: 1 });
 entrySchema.index({ vehicleNo: 1 });
+entrySchema.index({ vehicleNoNorm: 1, branch: 1, createdAt: 1 }); // ← NEW: security linking
+entrySchema.index({ userId: 1, date: -1 });                        // ← NEW: pagination + date-range
 
 module.exports = mongoose.model("Entry", entrySchema);
