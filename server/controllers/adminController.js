@@ -1,7 +1,7 @@
 const Entry      = require("../models/Entry");
 const User       = require("../models/User");
 const Attendance = require("../models/Attendance");
-const { writeAuditLog } = require("../utils/auditLogger"); // ← NEW
+const { writeAuditLog } = require("../utils/auditLogger");
 
 const VALID_BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
 
@@ -106,7 +106,11 @@ const getBranchDashboard = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/admin/branch/:branch/technicians
+// GET /api/admin/branch/:branch/technicians?month=YYYY-MM
+//
+// FIX: Stats (entries, hours, labour) are now scoped to the requested calendar
+// month — same month param pattern used by getBranchDashboard. Falls back to
+// the current UTC month when no param is sent (e.g. old clients).
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchTechnicians = async (req, res) => {
   try {
@@ -115,6 +119,10 @@ const getBranchTechnicians = async (req, res) => {
     if (isBranchAdmin(req) && branch !== req.user.branch) {
       return res.status(403).json({ message: "Access denied: You can only view your own branch." });
     }
+
+    // ── Parse month param — defaults to current UTC month if absent ──
+    const { year, month0 } = parseMonthParam(req.query.month);
+    const { from, to }     = monthDateRange(year, month0);
 
     const technicians = await User
       .find({ branch, role: "technician" })
@@ -125,8 +133,14 @@ const getBranchTechnicians = async (req, res) => {
 
     const techIds = technicians.map((t) => t._id);
 
+    // ── Aggregate only entries within the requested month ──
     const summaries = await Entry.aggregate([
-      { $match: { userId: { $in: techIds } } },
+      {
+        $match: {
+          userId: { $in: techIds },
+          date:   { $gte: from, $lt: to },   // ← month-scoped
+        },
+      },
       {
         $group: {
           _id:          "$userId",
@@ -223,8 +237,6 @@ const getTechnicianEntries = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /api/admin/entry/:id
-// FIX (Audit System): writes an EDIT_ENTRY audit log with full before-snapshot
-// and a diff of changed fields. Audit write failure does NOT block the edit.
 // ─────────────────────────────────────────────────────────────────────────────
 const editEntry = async (req, res) => {
   try {
@@ -238,19 +250,12 @@ const editEntry = async (req, res) => {
     }
 
     const {
-      category,
-      vehicleNo,
-      jcNo,
-      hoursWorked,
-      labourAmount,
-      leaveDays,
-      incentive,
+      category, vehicleNo, jcNo,
+      hoursWorked, labourAmount, leaveDays, incentive,
     } = req.body;
 
-    // ── Snapshot BEFORE any changes — this is what gets written to AuditLog ──
     const oldSnapshot = entry.toObject();
-
-    const updates = {};
+    const updates     = {};
 
     if (category     !== undefined) updates.category     = category;
     if (vehicleNo    !== undefined) {
@@ -264,19 +269,17 @@ const editEntry = async (req, res) => {
     if (incentive    !== undefined) updates.incentive    = Math.max(0, Number(incentive) || 0);
 
     const updated = await Entry.findByIdAndUpdate(req.params.id, updates, {
-      new:           true,
-      runValidators: true,
+      new: true, runValidators: true,
     });
 
-    // ── Build diff of changed fields (old → new) ──
     const changedFields = {};
-    ["category", "vehicleNo", "jcNo", "hoursWorked", "labourAmount", "leaveDays", "incentive"].forEach((field) => {
-      if (field in updates && String(oldSnapshot[field]) !== String(updated[field])) {
-        changedFields[field] = { from: oldSnapshot[field], to: updated[field] };
-      }
-    });
+    ["category", "vehicleNo", "jcNo", "hoursWorked", "labourAmount", "leaveDays", "incentive"]
+      .forEach((field) => {
+        if (field in updates && String(oldSnapshot[field]) !== String(updated[field])) {
+          changedFields[field] = { from: oldSnapshot[field], to: updated[field] };
+        }
+      });
 
-    // ── Audit write (fire-and-forget-safe; never blocks the response) ──
     if (Object.keys(changedFields).length > 0) {
       const techUser = await User.findById(entry.userId).select("name technicianId").lean();
       await writeAuditLog({
@@ -300,9 +303,6 @@ const editEntry = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/admin/entry/:id
-// FIX (Audit System): writes a DELETE_ENTRY audit log with the full entry
-// snapshot BEFORE deletion — this is the recovery point if data needs to be
-// manually reconstructed. Audit write failure does NOT block the delete.
 // ─────────────────────────────────────────────────────────────────────────────
 const deleteEntry = async (req, res) => {
   try {
@@ -315,13 +315,11 @@ const deleteEntry = async (req, res) => {
       });
     }
 
-    // ── Snapshot BEFORE delete — full recovery point ──
     const snapshot = entry.toObject();
     const techUser = await User.findById(entry.userId).select("name technicianId").lean();
 
     await Entry.findByIdAndDelete(req.params.id);
 
-    // ── Audit write (does not block the response) ──
     await writeAuditLog({
       action:        "DELETE_ENTRY",
       req,
@@ -374,24 +372,16 @@ const getAnalytics = async (req, res) => {
 
     if (from || to) {
       matchStage.date = {};
-
       if (from) {
         const fromDate = new Date(from);
-        if (isNaN(fromDate.getTime())) {
-          return res.status(400).json({
-            message: "Invalid 'from' date. Use YYYY-MM-DD format.",
-          });
-        }
+        if (isNaN(fromDate.getTime()))
+          return res.status(400).json({ message: "Invalid 'from' date. Use YYYY-MM-DD format." });
         matchStage.date.$gte = fromDate;
       }
-
       if (to) {
         const toDate = new Date(to + "T23:59:59.999Z");
-        if (isNaN(toDate.getTime())) {
-          return res.status(400).json({
-            message: "Invalid 'to' date. Use YYYY-MM-DD format.",
-          });
-        }
+        if (isNaN(toDate.getTime()))
+          return res.status(400).json({ message: "Invalid 'to' date. Use YYYY-MM-DD format." });
         matchStage.date.$lte = toDate;
       }
     }
@@ -562,7 +552,9 @@ const editUser = async (req, res) => {
     if (branch         !== undefined) updates.branch         = branch.trim();
     if (technicianType !== undefined) updates.technicianType = technicianType || null;
 
-    const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true }).select("-password");
+    const updatedUser = await User
+      .findByIdAndUpdate(userId, updates, { new: true })
+      .select("-password");
 
     if (updates.branch && updates.branch !== user.branch) {
       await Entry.updateMany({ userId }, { $set: { branch: updates.branch } });

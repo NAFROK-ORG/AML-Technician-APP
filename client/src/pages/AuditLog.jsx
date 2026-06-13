@@ -71,23 +71,14 @@ const AL_STYLES = `
   .al-denied-text { font-size: 12px; color: #94A3B8; }
 `;
 
-if (typeof document !== "undefined") {
-  const _id = "al-styles";
-  if (!document.getElementById(_id)) {
-    const el = document.createElement("style");
-    el.id = _id;
-    el.textContent = AL_STYLES;
-    document.head.appendChild(el);
-  }
-}
-
+// ─── Helpers ───────────────────────────────────────────────────────────────
 const fmtDateTime = (iso) =>
   new Date(iso).toLocaleString("en-IN", {
     day: "2-digit", month: "short", year: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: true,
   });
 
-// ─── Single log card ─────────────────────────────────────────────────────────
+// ─── Single log card ──────────────────────────────────────────────────────
 const LogCard = memo(function LogCard({ log }) {
   const [showSnapshot, setShowSnapshot] = useState(false);
   const isDelete = log.action === "DELETE_ENTRY";
@@ -140,17 +131,33 @@ const LogCard = memo(function LogCard({ log }) {
   );
 });
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────
 export default function AuditLog() {
   const { user } = useAuthStore();
-  const [logs,    setLogs]    = useState([]);
-  const [page,    setPage]    = useState(1);
-  const [pages,   setPages]   = useState(1);
-  const [total,   setTotal]   = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
+  const [logs,         setLogs]         = useState([]);
+  const [page,         setPage]         = useState(1);
+  const [pages,        setPages]        = useState(1);
+  const [total,        setTotal]        = useState(0);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
   const [actionFilter, setActionFilter] = useState("");
-  const [flushing, setFlushing] = useState(false);
+  const [flushing,     setFlushing]     = useState(false);
+
+  // ── Style injection — inside useEffect so it runs per mount/unmount
+  //    and never collides with other pages using their own style tags ──
+  useEffect(() => {
+    const id = "al-styles-audit-log";
+    if (!document.getElementById(id)) {
+      const el = document.createElement("style");
+      el.id = id;
+      el.textContent = AL_STYLES;
+      document.head.appendChild(el);
+    }
+    return () => {
+      const el = document.getElementById(id);
+      if (el) document.head.removeChild(el);
+    };
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -160,7 +167,7 @@ export default function AuditLog() {
       if (actionFilter) params.set("action", actionFilter);
 
       const res = await api.get(`/api/audit?${params.toString()}`);
-      setLogs(res.data.logs || []);
+      setLogs(res.data.logs   || []);
       setTotal(res.data.total || 0);
       setPages(res.data.pages || 1);
     } catch (err) {
@@ -198,8 +205,6 @@ export default function AuditLog() {
   };
 
   // ── Frontend gate: superadmin only ──
-  // (Backend already enforces this via superAdminOnly middleware — this is
-  // just to avoid showing a broken/403 page to the wrong role.)
   if (user && user.role !== "superadmin") {
     return (
       <div className="al-page">
@@ -220,7 +225,8 @@ export default function AuditLog() {
         <div className="al-eyebrow">Superadmin · System Audit</div>
         <h1 className="al-title">Audit Log</h1>
         <p className="al-sub">
-          Every edit and delete on job card entries, across all branches — {total} record{total === 1 ? "" : "s"}
+          Every edit and delete on job card entries, across all branches —{" "}
+          {total} record{total === 1 ? "" : "s"}
         </p>
       </div>
 
@@ -237,7 +243,11 @@ export default function AuditLog() {
           </select>
         </div>
 
-        <button className="al-flush-btn" onClick={handleFlush} disabled={flushing || total === 0}>
+        <button
+          className="al-flush-btn"
+          onClick={handleFlush}
+          disabled={flushing || total === 0}
+        >
           {flushing ? "Flushing…" : "Flush All Logs"}
         </button>
       </div>
@@ -247,7 +257,9 @@ export default function AuditLog() {
       ) : error ? (
         <div className="al-empty" style={{ color: "#DC2626" }}>{error}</div>
       ) : logs.length === 0 ? (
-        <div className="al-empty">No audit log entries{actionFilter ? " for this filter" : ""}.</div>
+        <div className="al-empty">
+          No audit log entries{actionFilter ? " for this filter" : ""}.
+        </div>
       ) : (
         <>
           <div className="al-list">
@@ -258,11 +270,19 @@ export default function AuditLog() {
 
           {pages > 1 && (
             <div className="al-pagination">
-              <button className="al-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+              <button
+                className="al-page-btn"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
                 ‹ Prev
               </button>
               <span className="al-page-label">{page} / {pages}</span>
-              <button className="al-page-btn" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}>
+              <button
+                className="al-page-btn"
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={page >= pages}
+              >
                 Next ›
               </button>
             </div>
