@@ -1,6 +1,7 @@
 const Entry      = require("../models/Entry");
 const User       = require("../models/User");
 const Attendance = require("../models/Attendance");
+const { writeAuditLog } = require("../utils/auditLogger"); // ← NEW
 
 const VALID_BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
 
@@ -106,8 +107,6 @@ const getBranchDashboard = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branch/:branch/technicians
-// FIX: was N+1 (one aggregation per technician). Now a single aggregation
-//      with $in for all techIds, merged in memory. O(N) → O(1) DB calls.
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchTechnicians = async (req, res) => {
   try {
@@ -126,7 +125,6 @@ const getBranchTechnicians = async (req, res) => {
 
     const techIds = technicians.map((t) => t._id);
 
-    // Single aggregation replaces the previous Promise.all(technicians.map(...)) loop
     const summaries = await Entry.aggregate([
       { $match: { userId: { $in: techIds } } },
       {
@@ -163,9 +161,6 @@ const getBranchTechnicians = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/technician/:userId  — paginated entries
-// FIX: added allTimeStats aggregation alongside the paginated fetch.
-//      Frontend AdminTechnicianDetail was computing totals from the current
-//      page only (20 entries), showing wrong numbers. allTimeStats fixes that.
 // ─────────────────────────────────────────────────────────────────────────────
 const getTechnicianEntries = async (req, res) => {
   try {
@@ -219,7 +214,7 @@ const getTechnicianEntries = async (req, res) => {
       total,
       page,
       pages: Math.ceil(total / limit),
-      allTimeStats, // ← consumed by AdminTechnicianDetail totals strip
+      allTimeStats,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -228,8 +223,8 @@ const getTechnicianEntries = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /api/admin/entry/:id
-// FIX: incentive was never processed. Admin sets it manually after month-end.
-//      It is the only path that writes a non-zero incentive to an entry document.
+// FIX (Audit System): writes an EDIT_ENTRY audit log with full before-snapshot
+// and a diff of changed fields. Audit write failure does NOT block the edit.
 // ─────────────────────────────────────────────────────────────────────────────
 const editEntry = async (req, res) => {
   try {
@@ -242,7 +237,6 @@ const editEntry = async (req, res) => {
       });
     }
 
-    // FIX: incentive added to destructuring and updates
     const {
       category,
       vehicleNo,
@@ -252,6 +246,9 @@ const editEntry = async (req, res) => {
       leaveDays,
       incentive,
     } = req.body;
+
+    // ── Snapshot BEFORE any changes — this is what gets written to AuditLog ──
+    const oldSnapshot = entry.toObject();
 
     const updates = {};
 
@@ -264,13 +261,32 @@ const editEntry = async (req, res) => {
     if (hoursWorked  !== undefined) updates.hoursWorked  = Number(hoursWorked)  || 0;
     if (labourAmount !== undefined) updates.labourAmount = Number(labourAmount) || 0;
     if (leaveDays    !== undefined) updates.leaveDays    = Number(leaveDays)    || 0;
-    // FIX: was silently ignored before — now correctly saved
     if (incentive    !== undefined) updates.incentive    = Math.max(0, Number(incentive) || 0);
 
     const updated = await Entry.findByIdAndUpdate(req.params.id, updates, {
       new:           true,
       runValidators: true,
     });
+
+    // ── Build diff of changed fields (old → new) ──
+    const changedFields = {};
+    ["category", "vehicleNo", "jcNo", "hoursWorked", "labourAmount", "leaveDays", "incentive"].forEach((field) => {
+      if (field in updates && String(oldSnapshot[field]) !== String(updated[field])) {
+        changedFields[field] = { from: oldSnapshot[field], to: updated[field] };
+      }
+    });
+
+    // ── Audit write (fire-and-forget-safe; never blocks the response) ──
+    if (Object.keys(changedFields).length > 0) {
+      const techUser = await User.findById(entry.userId).select("name technicianId").lean();
+      await writeAuditLog({
+        action:        "EDIT_ENTRY",
+        req,
+        entrySnapshot: oldSnapshot,
+        changes:       changedFields,
+        targetUser:    techUser,
+      });
+    }
 
     res.json(updated);
   } catch (err) {
@@ -284,6 +300,9 @@ const editEntry = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/admin/entry/:id
+// FIX (Audit System): writes a DELETE_ENTRY audit log with the full entry
+// snapshot BEFORE deletion — this is the recovery point if data needs to be
+// manually reconstructed. Audit write failure does NOT block the delete.
 // ─────────────────────────────────────────────────────────────────────────────
 const deleteEntry = async (req, res) => {
   try {
@@ -296,7 +315,21 @@ const deleteEntry = async (req, res) => {
       });
     }
 
+    // ── Snapshot BEFORE delete — full recovery point ──
+    const snapshot = entry.toObject();
+    const techUser = await User.findById(entry.userId).select("name technicianId").lean();
+
     await Entry.findByIdAndDelete(req.params.id);
+
+    // ── Audit write (does not block the response) ──
+    await writeAuditLog({
+      action:        "DELETE_ENTRY",
+      req,
+      entrySnapshot: snapshot,
+      changes:       null,
+      targetUser:    techUser,
+    });
+
     res.json({ message: "Entry deleted by admin" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -329,9 +362,6 @@ const exportTechnicianData = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/analytics
-// FIX: from/to query params are now validated before being passed to MongoDB.
-//      Previously, new Date("abc") produced Invalid Date silently — the query
-//      ran but matched nothing, returning zeros with no error to the caller.
 // ─────────────────────────────────────────────────────────────────────────────
 const getAnalytics = async (req, res) => {
   try {
