@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
-import api from "../api/axios";
+import { useState, useEffect, memo } from "react";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 const ITEMS_PER_PAGE = 10;
@@ -137,7 +136,10 @@ const Pagination = memo(function Pagination({ page, totalPages, total, onPrev, o
 });
 
 // ─── Single entry row ───────────────────────────────────────────────────────
-const EntryRow = memo(function EntryRow({ entry, onEdit, onDelete }) {
+// FIX (Audit System Phase 2): removed the Delete button + onDelete entirely.
+// Entry history is now READ-ONLY for technicians. Only Edit remains.
+// Admins delete entries via AdminTechnicianDetail.jsx (now audit-logged).
+const EntryRow = memo(function EntryRow({ entry, onEdit }) {
   const color = CAT_COLOR[entry.category] || "#6B7A99";
 
   const date = new Date(entry.date).toLocaleDateString("en-IN", {
@@ -221,12 +223,12 @@ const EntryRow = memo(function EntryRow({ entry, onEdit, onDelete }) {
         ))}
       </div>
 
-      {/* ── Actions row ── */}
-      <div style={{
-        display: "flex", justifyContent: "flex-end",
-        alignItems: "center", gap: "16px", marginTop: "10px",
-      }}>
-        {typeof onEdit === "function" && (
+      {/* ── Actions row — Edit only ── */}
+      {typeof onEdit === "function" && (
+        <div style={{
+          display: "flex", justifyContent: "flex-end",
+          alignItems: "center", gap: "16px", marginTop: "10px",
+        }}>
           <button
             onClick={() => onEdit(entry)}
             style={{
@@ -257,34 +259,19 @@ const EntryRow = memo(function EntryRow({ entry, onEdit, onDelete }) {
           >
             ✎ Edit
           </button>
-        )}
-
-        <button
-          onClick={() => onDelete(entry._id)}
-          style={{
-            background: "transparent", border: "none",
-            color: "#CBD5E1", fontSize: "9px", fontWeight: "700",
-            letterSpacing: "0.14em", textTransform: "uppercase",
-            cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
-            padding: "5px 0", transition: "color 0.15s",
-            WebkitTapHighlightColor: "transparent",
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.color = "#DC2626")}
-          onMouseOut={(e)  => (e.currentTarget.style.color = "#CBD5E1")}
-        >
-          Delete
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 });
 
 // ─── Main EntryTable ────────────────────────────────────────────────────────
-export default function EntryTable({ entries, onDeleted, onEdit }) {
+// FIX: removed `onDeleted` prop and all delete logic. Read-only history + edit.
+export default function EntryTable({ entries, onEdit }) {
   const [page, setPage] = useState(1);
 
   // Reset to page 1 whenever the entries list length changes
-  // (new entry added, entry deleted, fresh fetch)
+  // (new entry added, fresh fetch)
   useEffect(() => {
     setPage(1);
   }, [entries.length]);
@@ -294,18 +281,8 @@ export default function EntryTable({ entries, onDeleted, onEdit }) {
   const start         = (safePageParam - 1) * ITEMS_PER_PAGE;
   const visibleEntries = entries.slice(start, start + ITEMS_PER_PAGE);
 
-  const handleDelete = useCallback(async (id) => {
-    if (!window.confirm("Delete this entry?")) return;
-    try {
-      await api.delete(`/api/entries/${id}`);
-      onDeleted();
-    } catch (err) {
-      alert(err.response?.data?.message || "Delete failed");
-    }
-  }, [onDeleted]);
-
-  const handlePrev = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
-  const handleNext = useCallback(() => setPage((p) => Math.min(totalPages, p + 1)), [totalPages]);
+  const handlePrev = () => setPage((p) => Math.max(1, p - 1));
+  const handleNext = () => setPage((p) => Math.min(totalPages, p + 1));
 
   // ── Empty state ──
   if (entries.length === 0) {
@@ -340,7 +317,6 @@ export default function EntryTable({ entries, onDeleted, onEdit }) {
           key={entry._id}
           entry={entry}
           onEdit={onEdit}
-          onDelete={handleDelete}
         />
       ))}
 
