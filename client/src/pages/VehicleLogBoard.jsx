@@ -23,6 +23,46 @@ function fmtDate(iso) {
     weekday: "short", day: "numeric", month: "short",
   }).toUpperCase();
 }
+// ── NEW: combined date + time, e.g. "10 JUN, 09:18 AM" ────────────────────────
+// Used everywhere a timestamp is shown, so logs/entries spanning multiple days
+// are never ambiguous (previously only the time was shown, which was misleading
+// once entries could legitimately be linked across days).
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const datePart = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }).toUpperCase();
+  const timePart = fmtTime(iso);
+  return `${datePart}, ${timePart}`;
+}
+// ── Duration formatting — deliberately coarse and cheap to compute ───────────
+// Cap at 4 days: beyond that a number stops being meaningful (likely a stale
+// log, not an active wait) so we just say "4d+" and stop.
+const DURATION_CAP_DAYS = 4;
+
+function formatDuration(ms) {
+  if (ms == null || isNaN(ms)) return "—";
+  if (ms < 0) ms = 0;
+
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "<1m";
+  if (mins < 60) return `${mins}m`;
+
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+
+  const days = Math.floor(hours / 24);
+  if (days >= DURATION_CAP_DAYS) return `${DURATION_CAP_DAYS}d+`;
+  return `${days}d`;
+}
+// ── Waiting-time severity — for UNASSIGNED vehicles only ──────────────────────
+// A vehicle that's been logged but has no job card is the thing worth
+// flagging; the longer it sits, the worse it looks.
+function waitingLevel(ms) {
+  const hours = ms / 3600000;
+  if (hours <= 2)  return "good";  // 0-2 hr — fine
+  if (hours <= 24) return "warn";  // 2-24 hr — keep an eye on it
+  return "bad";                    // 1 day+ — flag it
+}
 function fmtMoney(n) {
   if (!n) return "₹0";
   if (n >= 1000) return `₹${(n / 1000).toFixed(1)}k`;
@@ -222,6 +262,7 @@ const STYLES = `
     color: #6B7A99; background: #F8FAFC;
     border: 1px solid #DDE3EE; padding: 2px 7px;
     letter-spacing: 0.04em;
+    white-space: nowrap;
   }
   .vlb-branch-badge {
     font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
@@ -244,6 +285,31 @@ const STYLES = `
   }
   .vlb-status-badge.unassigned {
     color: #B45309; background: #FFFBEB; border: 1px solid #FCD34D;
+  }
+
+  /* ── NEW: Response / waiting time chip ── */
+  .vlb-meta-chip {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 3px 8px;
+    white-space: nowrap; border: 1px solid transparent;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .vlb-meta-chip .vlb-meta-chip-label {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 700; letter-spacing: 0.14em; margin-right: 4px;
+    opacity: 0.7;
+  }
+  .vlb-meta-chip.good {
+    color: #16A34A; background: #F0FDF4; border-color: #BBF7D0;
+  }
+  .vlb-meta-chip.warn {
+    color: #B45309; background: #FFFBEB; border-color: #FDE68A;
+  }
+  .vlb-meta-chip.bad {
+    color: #DC2626; background: #FEF2F2; border-color: #FECACA;
+  }
+  .vlb-meta-chip.neutral {
+    color: #6B7A99; background: #F8FAFC; border-color: #DDE3EE;
   }
 
   /* ── Entry list inside log card ── */
@@ -277,17 +343,33 @@ const STYLES = `
     background: #F1F5F9; padding: 2px 6px;
     white-space: nowrap;
   }
+  .vlb-entry-time-wrap {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+    margin-left: auto;
+  }
   .vlb-entry-time {
     font-size: 10px; font-weight: 600; color: #94A3B8;
     font-family: 'IBM Plex Mono', monospace;
     white-space: nowrap;
   }
+  .vlb-entry-gap {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #94A3B8;
+    white-space: nowrap;
+  }
+  .vlb-entry-gap.good { color: #16A34A; }
+  .vlb-entry-gap.warn { color: #B45309; }
+  .vlb-entry-gap.bad  { color: #DC2626; }
 
   /* ── Unassigned indicator ── */
   .vlb-unassigned-row {
     padding: 12px 20px 12px 28px;
     border-top: 1px solid #FEF3C7;
     background: #FFFBEB;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    flex-wrap: wrap;
+  }
+  .vlb-unassigned-left {
     display: flex; align-items: center; gap: 8px;
   }
   .vlb-unassigned-dot {
@@ -363,6 +445,32 @@ const STYLES = `
     .vlb-summary-value { font-size: 22px; }
     .vlb-filter-group { min-width: 100%; }
     .vlb-search-wrap  { min-width: 100%; }
+
+    /* Stack the card header on small screens so long vehicle numbers + status
+       badges + meta chips never overflow or get cramped */
+    .vlb-log-card-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+    .vlb-status {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .vlb-entry-row {
+      align-items: flex-start;
+    }
+    .vlb-entry-time-wrap {
+      margin-left: 0;
+      align-items: flex-start;
+      flex-direction: row;
+      gap: 8px;
+      width: 100%;
+      justify-content: space-between;
+    }
+    .vlb-entry-jc { flex-basis: 100%; }
   }
 `;
 
@@ -401,50 +509,61 @@ export default function VehicleLogBoard() {
   const [error,          setError]          = useState("");
 
   // ─── Stable ref for polling (avoids stale closures) ───────────────────────
-  const paramsRef = useRef({ date, branch, q: committedQ, page: 1 });
-
+const paramsRef  = useRef({ date, branch, q: committedQ, page: 1 });
+const abortRef   = useRef(null); // ← NEW: cancels stale in-flight requests
   // ─── Core fetch ───────────────────────────────────────────────────────────
   // fetchBoard is stable (no deps). It always reads the current paramsRef.
-  const fetchBoard = useCallback(async (overrides = {}, silent = false) => {
-    const p = { ...paramsRef.current, ...overrides };
-    paramsRef.current = p;
+const fetchBoard = useCallback(async (overrides = {}, silent = false) => {
+  // Cancel any previous in-flight request. This prevents a slow response
+  // from an old filter set from overwriting fresher data from the new one.
+  if (abortRef.current) abortRef.current.abort();
+  abortRef.current = new AbortController();
 
-    if (!silent) setLoading(true);
-    setError("");
-    try {
-      const qs = new URLSearchParams();
-      qs.set("page", p.page);
-      qs.set("date", p.date);
-      if (p.branch)            qs.set("branch", p.branch);
-      if (p.q && p.q.length >= 3) qs.set("q", p.q);
+  const p = { ...paramsRef.current, ...overrides };
+  paramsRef.current = p;
 
-      const res = await api.get(`/api/security/board?${qs}`);
-      setLogs(res.data.logs);
-      setTotal(res.data.total);
-      // Use server-computed totals that span ALL matching logs, not just the current page
-      setTotalAssigned(res.data.totalAssigned   ?? 0);
-      setTotalUnassigned(res.data.totalUnassigned ?? 0);
-      setCurrPage(res.data.page);
-      setTotalPages(res.data.totalPages);
-    } catch (err) {
-      console.error("[VehicleLogBoard] fetch error:", err);
-      if (!silent) setError(err.response?.data?.message || "Failed to load vehicle log.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+  if (!silent) setLoading(true);
+  setError("");
+  try {
+    const qs = new URLSearchParams();
+    qs.set("page", p.page);
+    qs.set("date", p.date);
+    if (p.branch)               qs.set("branch", p.branch);
+    if (p.q && p.q.length >= 3) qs.set("q", p.q);
 
+    const res = await api.get(`/api/security/board?${qs}`, {
+      signal: abortRef.current.signal, // ← NEW: axios will throw on abort
+    });
+    setLogs(res.data.logs);
+    setTotal(res.data.total);
+    setTotalAssigned(res.data.totalAssigned   ?? 0);
+    setTotalUnassigned(res.data.totalUnassigned ?? 0);
+    setCurrPage(res.data.page);
+    setTotalPages(res.data.totalPages);
+  } catch (err) {
+    // Aborted request — a newer one is already in flight. Silently ignore.
+    if (err.name === "CanceledError" || err.code === "ERR_CANCELED") return;
+    console.error("[VehicleLogBoard] fetch error:", err);
+    if (!silent) setError(err.response?.data?.message || "Failed to load vehicle log.");
+  } finally {
+    if (!silent) setLoading(false);
+  }
+}, []); // abortRef is a ref — stable, no deps needed
   // ── Fetch on filter change (resets to page 1) ──────────────────────────────
   useEffect(() => {
     fetchBoard({ date, branch, q: committedQ, page: 1 });
   }, [date, branch, committedQ, fetchBoard]);
 
   // ── Live polling (silent, current page) ───────────────────────────────────
-  useEffect(() => {
-    const id = setInterval(() => fetchBoard({}, true), POLL_MS);
-    return () => clearInterval(id);
-  }, [fetchBoard]);
-
+// ── Live polling (silent, current page) ───────────────────────────────────
+// Guard: skip the fetch when the tab is hidden (background tab, minimized).
+// This directly cuts background load when any admin leaves this board open.
+useEffect(() => {
+  const id = setInterval(() => {
+    if (document.visibilityState === "visible") fetchBoard({}, true);
+  }, POLL_MS);
+  return () => clearInterval(id);
+}, [fetchBoard]);
   // ── Pagination ────────────────────────────────────────────────────────────
   const handlePageChange = (newPage) => {
     fetchBoard({ page: newPage });
@@ -642,6 +761,20 @@ export default function VehicleLogBoard() {
 function LogCard({ log, showBranch }) {
   const { status, entries = [] } = log;
 
+  const loggedAtMs = log.loggedAt ? new Date(log.loggedAt).getTime() : null;
+
+  // ── Response time: gap between security log and the FIRST linked entry ─────
+  let responseMs   = null;
+  if (entries.length > 0 && loggedAtMs != null) {
+    responseMs = new Date(entries[0].createdAt).getTime() - loggedAtMs;
+  }
+
+  // ── Waiting time: for unassigned vehicles, how long since they were logged ─
+  let waitingMs = null;
+  if (status === "unassigned" && loggedAtMs != null) {
+    waitingMs = Date.now() - loggedAtMs;
+  }
+
   return (
     <div className="vlb-log-card">
 
@@ -654,9 +787,24 @@ function LogCard({ log, showBranch }) {
             <span className="vlb-log-by">
               {log.loggedBy?.name || "Security"}
             </span>
-            <span className="vlb-log-time-badge">{fmtTime(log.loggedAt)}</span>
+            {/* ── Date + time (was time-only before) ── */}
+            <span className="vlb-log-time-badge">{fmtDateTime(log.loggedAt)}</span>
             {showBranch && log.branch && (
               <span className="vlb-branch-badge">{log.branch}</span>
+            )}
+            {/* ── Response time chip — always green: a response happened ── */}
+            {responseMs != null && (
+              <span className="vlb-meta-chip good">
+                <span className="vlb-meta-chip-label">Response</span>
+                {formatDuration(responseMs)}
+              </span>
+            )}
+            {/* ── Waiting time chip — only for unassigned, severity-colored ── */}
+            {waitingMs != null && (
+              <span className={`vlb-meta-chip ${waitingLevel(waitingMs)}`}>
+                <span className="vlb-meta-chip-label">Waiting</span>
+                {formatDuration(waitingMs)}
+              </span>
             )}
           </div>
         </div>
@@ -678,29 +826,49 @@ function LogCard({ log, showBranch }) {
       {/* ── Linked entries ── */}
       {entries.length > 0 && (
         <div className="vlb-entries-wrap">
-          {entries.map((entry) => (
-            <div key={entry._id} className="vlb-entry-row">
-              <div>
-                <div className="vlb-entry-tech">{entry.userId?.name || "—"}</div>
-                {entry.userId?.technicianId && (
-                  <div className="vlb-entry-tech-id">{entry.userId.technicianId}</div>
-                )}
+          {entries.map((entry, i) => {
+            // Gap shown per entry:
+            //  - 1st entry  → time from the security log itself (response time)
+            //  - later entries → time since the PREVIOUS job card (handoff gap)
+            const prevTime = i === 0 ? loggedAtMs : new Date(entries[i - 1].createdAt).getTime();
+            const gapMs    = prevTime != null
+              ? new Date(entry.createdAt).getTime() - prevTime
+              : null;
+            const gapLabel = i === 0 ? "since log" : "since prev. JC";
+
+            return (
+              <div key={entry._id} className="vlb-entry-row">
+                <div>
+                  <div className="vlb-entry-tech">{entry.userId?.name || "—"}</div>
+                  {entry.userId?.technicianId && (
+                    <div className="vlb-entry-tech-id">{entry.userId.technicianId}</div>
+                  )}
+                </div>
+                <span className="vlb-entry-jc">{entry.jcNo}</span>
+                <span className="vlb-entry-cat">{entry.category}</span>
+                <div className="vlb-entry-time-wrap">
+                  <span className="vlb-entry-time">{fmtDateTime(entry.createdAt)}</span>
+                  {gapMs != null && (
+                    <span className="vlb-entry-gap good">
+                      +{formatDuration(gapMs)} {gapLabel}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="vlb-entry-jc">{entry.jcNo}</span>
-              <span className="vlb-entry-cat">{entry.category}</span>
-              <span className="vlb-entry-time">{fmtTime(entry.createdAt)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* ── Unassigned indicator ── */}
       {status === "unassigned" && (
         <div className="vlb-unassigned-row">
-          <span className="vlb-unassigned-dot" />
-          <span className="vlb-unassigned-text">
-            No job card logged for this vehicle yet
-          </span>
+          <div className="vlb-unassigned-left">
+            <span className="vlb-unassigned-dot" />
+            <span className="vlb-unassigned-text">
+              No job card logged for this vehicle yet
+            </span>
+          </div>
         </div>
       )}
 
