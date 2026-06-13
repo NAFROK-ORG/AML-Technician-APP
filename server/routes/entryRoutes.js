@@ -4,7 +4,6 @@ const { protect } = require("../middleware/authMiddleware");
 const {
   createEntry,
   getMyEntries,
-  deleteEntry,
   getMonthlyIncentive,
   editMyEntry,
 } = require("../controllers/entryController");
@@ -15,7 +14,11 @@ const {
 router.get("/my/incentive", protect, getMonthlyIncentive); // GET    /api/entries/my/incentive
 router.get("/my",           protect, getMyEntries);         // GET    /api/entries/my
 router.post("/",            protect, createEntry);          // POST   /api/entries
-router.delete("/:id",       protect, deleteEntry);          // DELETE /api/entries/:id
 router.put("/:id",          protect, editMyEntry);          // PUT    /api/entries/:id
+
+// REMOVED (Audit System Phase 2): DELETE /:id (deleteEntry)
+// Technicians can no longer delete their own entries via any path.
+// Entry history is read-only on the technician side. Admin deletes only,
+// via DELETE /api/admin/entry/:id, which is now audit-logged.
 
 module.exports = router;
