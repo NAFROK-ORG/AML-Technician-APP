@@ -1288,7 +1288,7 @@ export default function TechnicianDashboard() {
             ) : (
               <EntryTable
                 entries={entries}
-                onDeleted={fetchEntries}
+              
                 onEdit={handleOpenEdit}
               />
             )}
