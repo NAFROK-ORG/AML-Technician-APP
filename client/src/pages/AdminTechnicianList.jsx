@@ -32,23 +32,23 @@ const TYPE_STYLE = {
 
 const FILTER_OPTIONS = ["ALL", ...TECHNICIAN_TYPES, "PENDING"];
 
-/* ─── Month helpers — mirrors AdminBranchDashboard ───────────────── */
+const SORT_OPTIONS = [
+  { key: "labour",  label: "Labour",  symbol: "₹", color: "#D97706" },
+  { key: "hours",   label: "Hours",   symbol: "⏱", color: "#16A34A" },
+  { key: "entries", label: "Entries", symbol: "#", color: "#1E3A8A" },
+];
+
+/* ─── Month helpers ──────────────────────────────────────────────── */
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
 
-/**
- * currentMonthParam() → "YYYY-MM"
- * Computed once on mount; stable for the entire session.
- * Backend builds the UTC date range from this string.
- */
 const currentMonthParam = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-/** monthLabel("2025-06") → "June 2025" */
 const monthLabel = (param) => {
   const [y, m] = param.split("-").map(Number);
   return `${MONTH_NAMES[m - 1]} ${y}`;
@@ -112,6 +112,7 @@ const INJECTED = `
     scrollbar-width: none; -ms-overflow-style: none;
   }
   .al-filter-strip::-webkit-scrollbar { display: none; }
+
   .al-filter-pill {
     flex-shrink: 0; padding: 5px 10px;
     border: 1.5px solid #DDE3EE; background: #F8FAFC;
@@ -126,6 +127,36 @@ const INJECTED = `
   .al-filter-pill.active { background: #1E3A8A; border-color: #1E3A8A; color: #FFFFFF; }
   .al-filter-pill.pending-pill { border-color: #FDE68A; color: #D97706; background: #FEF3C7; }
   .al-filter-pill.pending-pill.active { background: #D97706; border-color: #D97706; color: #FFFFFF; }
+
+  /* ── Sort pills ── */
+  .al-sort-strip {
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: nowrap; overflow-x: auto;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .al-sort-strip::-webkit-scrollbar { display: none; }
+
+  .al-sort-pill {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 11px;
+    border: 1.5px solid #DDE3EE; background: #F8FAFC;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #6B7A99; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent; white-space: nowrap;
+  }
+  .al-sort-pill:hover { border-color: #1E3A8A; color: #1E3A8A; background: #EEF2F7; }
+  .al-sort-pill.active-labour  { background: #FFFBEB; border-color: #D97706; color: #D97706; }
+  .al-sort-pill.active-hours   { background: #F0FDF4; border-color: #16A34A; color: #16A34A; }
+  .al-sort-pill.active-entries { background: #EEF2F7; border-color: #1E3A8A; color: #1E3A8A; }
+
+  .al-sort-arrow {
+    font-size: 10px; line-height: 1;
+    display: inline-block; transform: scaleY(0.9);
+  }
 
   .al-back-btn {
     background: transparent; border: none; color: #94A3B8;
@@ -224,6 +255,8 @@ const INJECTED = `
 
   @media (max-width: 480px) {
     .al-tech-stats { grid-template-columns: repeat(2, 1fr) !important; }
+    .al-sort-strip { gap: 5px; }
+    .al-sort-pill  { padding: 5px 9px; font-size: 8.5px; }
   }
 `;
 
@@ -234,7 +267,6 @@ export default function AdminTechnicianList() {
   const { user: authUser } = useAuthStore();
   const isSuperAdmin = authUser?.role === "superadmin";
 
-  // Stable for the full session — a new calendar month = a new page load anyway
   const [monthParam] = useState(currentMonthParam);
 
   // ── List state ──
@@ -243,6 +275,7 @@ export default function AdminTechnicianList() {
   const [error,       setError]       = useState("");
   const [search,      setSearch]      = useState("");
   const [typeFilter,  setTypeFilter]  = useState("ALL");
+  const [sortBy,      setSortBy]      = useState("labour");
 
   // ── Edit modal state ──
   const [editTarget,   setEditTarget]   = useState(null);
@@ -270,7 +303,7 @@ export default function AdminTechnicianList() {
   useEffect(() => {
     setLoading(true); setError("");
     api.get(`/api/admin/branch/${encodeURIComponent(branch)}/technicians`, {
-      params: { month: monthParam },   // ← month-scoped stats
+      params: { month: monthParam },
     })
       .then(r => setTechnicians(r.data))
       .catch(err => {
@@ -348,10 +381,18 @@ export default function AdminTechnicianList() {
   };
 
   // ── Derived list ──
-  const sorted = [...technicians].sort((a, b) => b.totalLabour - a.totalLabour);
+  // Sort is month-scoped — all stats come from the month-scoped API call
+  const sorted = [...technicians].sort((a, b) => {
+    if (sortBy === "hours")   return (b.totalHours   ?? 0) - (a.totalHours   ?? 0);
+    if (sortBy === "entries") return (b.totalEntries ?? 0) - (a.totalEntries ?? 0);
+    return (b.totalLabour ?? 0) - (a.totalLabour ?? 0);
+  });
+
+  // rankOf reflects the active sort — so #1 always means top in the chosen metric
   const rankOf = (t) => sorted.findIndex(x => x.id === t.id);
 
-  const afterSearch = technicians.filter(t =>
+  // Search from sorted so display order matches rank order
+  const afterSearch = sorted.filter(t =>
     !search ||
     t.name?.toLowerCase().includes(search.toLowerCase()) ||
     t.technicianId?.toLowerCase().includes(search.toLowerCase()) ||
@@ -364,11 +405,15 @@ export default function AdminTechnicianList() {
     return t.technicianType === typeFilter;
   });
 
+  // countFor always uses raw technicians — not affected by sort or search
   const countFor = (f) => {
     if (f === "ALL")     return technicians.length;
     if (f === "PENDING") return technicians.filter(t => !t.technicianType).length;
     return technicians.filter(t => t.technicianType === f).length;
   };
+
+  // Active sort label for the "sorted by" hint
+  const activeSortOption = SORT_OPTIONS.find(o => o.key === sortBy);
 
   return (
     <div style={{
@@ -421,20 +466,61 @@ export default function AdminTechnicianList() {
             )}
           </div>
 
-          {/* ── Month scope label ── */}
+          {/* ── Month scope + Sort controls ── */}
           {!loading && !error && (
-            <div style={{
-              display: "flex", alignItems: "center", gap: "8px",
-              marginBottom: "20px",
-            }}>
-              <div style={{ width: "3px", height: "12px", background: C.navy, flexShrink: 0 }} />
-              <span style={{
-                fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
-                textTransform: "uppercase", color: C.muted,
-                fontFamily: "'IBM Plex Sans', sans-serif",
-              }}>
-                Stats for {monthLabel(monthParam)}
-              </span>
+            <div style={{ marginBottom: "20px" }}>
+
+              {/* Month label */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <div style={{ width: "3px", height: "12px", background: C.navy, flexShrink: 0 }} />
+                <span style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  textTransform: "uppercase", color: C.muted,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}>
+                  Stats for {monthLabel(monthParam)}
+                </span>
+              </div>
+
+              {/* Sort controls — only when there's more than 1 technician to sort */}
+              {technicians.length > 1 && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "10px",
+                  background: C.card, border: `1px solid ${C.border}`,
+                  padding: "10px 14px",
+                }}>
+                  <span style={{
+                    fontSize: "8px", fontWeight: "700", letterSpacing: "0.18em",
+                    textTransform: "uppercase", color: C.dim,
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    flexShrink: 0,
+                  }}>Sort</span>
+
+                  <div style={{ width: "1px", height: "14px", background: C.border, flexShrink: 0 }} />
+
+                  <div className="al-sort-strip" style={{ flex: 1 }}>
+                    {SORT_OPTIONS.map(opt => {
+                      const isActive = sortBy === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          className={`al-sort-pill${isActive ? ` active-${opt.key}` : ""}`}
+                          onClick={() => setSortBy(opt.key)}
+                        >
+                          <span style={{
+                            fontSize: "10px", lineHeight: 1, flexShrink: 0,
+                            opacity: isActive ? 1 : 0.6,
+                          }}>{opt.symbol}</span>
+                          {opt.label}
+                          {isActive && (
+                            <span className="al-sort-arrow">↓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -542,111 +628,174 @@ export default function AdminTechnicianList() {
           </div>
 
         ) : (
-          <div className="al-a3" style={{
-            display: "flex", flexDirection: "column", gap: "1px",
-            background: C.border, border: `1px solid ${C.border}`,
-          }}>
-            {filtered.map(tech => {
-              const ri        = rankOf(tech);
-              const rankColor = ri <= 2 ? RANK_COLORS[ri] : null;
-              const typeStyle = tech.technicianType ? TYPE_STYLE[tech.technicianType] : null;
+          <>
+            {/* ── Sorted-by hint ── */}
+            {technicians.length > 1 && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                marginBottom: "8px",
+              }}>
+                <span style={{
+                  fontSize: "9px", fontWeight: "600", letterSpacing: "0.1em",
+                  textTransform: "uppercase", color: C.dim,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}>
+                  Ranked by
+                </span>
+                <span style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.1em",
+                  textTransform: "uppercase", color: activeSortOption?.color,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}>
+                  {activeSortOption?.label} ↓
+                </span>
+                <span style={{
+                  fontSize: "9px", color: C.dim,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}>
+                  · {monthLabel(monthParam)}
+                </span>
+              </div>
+            )}
 
-              return (
-                <div
-                  key={tech.id}
-                  className="al-tech-card"
-                  onClick={() => navigate(`/admin/technician/${tech.id}`)}
-                >
-                  {/* Top row */}
-                  <div style={{
-                    display: "flex", justifyContent: "space-between",
-                    alignItems: "flex-start", marginBottom: "12px",
-                  }}>
-                    {/* Left — name, id, email, badge */}
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                        {rankColor && (
+            <div className="al-a3" style={{
+              display: "flex", flexDirection: "column", gap: "1px",
+              background: C.border, border: `1px solid ${C.border}`,
+            }}>
+              {filtered.map(tech => {
+                const ri        = rankOf(tech);
+                const rankColor = ri <= 2 ? RANK_COLORS[ri] : null;
+                const typeStyle = tech.technicianType ? TYPE_STYLE[tech.technicianType] : null;
+
+                // Which stat cell to highlight based on active sort
+                const highlightStat = sortBy;
+
+                return (
+                  <div
+                    key={tech.id}
+                    className="al-tech-card"
+                    onClick={() => navigate(`/admin/technician/${tech.id}`)}
+                  >
+                    {/* Top row */}
+                    <div style={{
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "flex-start", marginBottom: "12px",
+                    }}>
+                      {/* Left — name, id, email, badge */}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                          {rankColor && (
+                            <span style={{
+                              fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
+                              color: rankColor, background: `${rankColor}18`,
+                              border: `1px solid ${rankColor}50`, padding: "2px 6px",
+                              flexShrink: 0,
+                            }}>#{ri + 1}</span>
+                          )}
                           <span style={{
-                            fontSize: "9px", fontWeight: "700", letterSpacing: "0.12em",
-                            color: rankColor, background: `${rankColor}18`,
-                            border: `1px solid ${rankColor}50`, padding: "2px 6px",
-                          }}>#{ri + 1}</span>
-                        )}
+                            fontFamily: "'Barlow Condensed', sans-serif",
+                            fontSize: "22px", fontWeight: "700", color: C.ink,
+                            letterSpacing: "0.03em", lineHeight: 1,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{tech.name}</span>
+                        </div>
                         <span style={{
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          fontSize: "22px", fontWeight: "700", color: C.ink,
-                          letterSpacing: "0.03em", lineHeight: 1,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>{tech.name}</span>
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontSize: "11px", color: C.navy, fontWeight: "600",
+                          letterSpacing: "0.08em", display: "block", marginBottom: "5px",
+                        }}>{tech.technicianId}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "11px", color: C.dim }}>{tech.email}</span>
+                          {tech.technicianType ? (
+                            <span style={{
+                              fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
+                              textTransform: "uppercase", padding: "2px 7px",
+                              color: typeStyle.color, background: typeStyle.bg,
+                              border: `1px solid ${typeStyle.border}`,
+                            }}>{tech.technicianType}</span>
+                          ) : (
+                            <span style={{
+                              fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
+                              textTransform: "uppercase", padding: "2px 7px",
+                              color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A",
+                            }}>⚠ PENDING TYPE</span>
+                          )}
+                        </div>
                       </div>
-                      <span style={{
-                        fontFamily: "'IBM Plex Mono', monospace",
-                        fontSize: "11px", color: C.navy, fontWeight: "600",
-                        letterSpacing: "0.08em", display: "block", marginBottom: "5px",
-                      }}>{tech.technicianId}</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "11px", color: C.dim }}>{tech.email}</span>
-                        {tech.technicianType ? (
-                          <span style={{
-                            fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
-                            textTransform: "uppercase", padding: "2px 7px",
-                            color: typeStyle.color, background: typeStyle.bg,
-                            border: `1px solid ${typeStyle.border}`,
-                          }}>{tech.technicianType}</span>
-                        ) : (
-                          <span style={{
-                            fontSize: "8px", fontWeight: "700", letterSpacing: "0.12em",
-                            textTransform: "uppercase", padding: "2px 7px",
-                            color: "#D97706", background: "#FEF3C7", border: "1px solid #FDE68A",
-                          }}>⚠ PENDING TYPE</span>
-                        )}
-                      </div>
+
+                      {/* Right — action buttons (superadmin) or arrow */}
+                      {isSuperAdmin ? (
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <button className="al-action-btn edit" onClick={e => openEdit(e, tech)}>Edit</button>
+                          <button className="al-action-btn del"  onClick={e => openDelete(e, tech)}>Delete</button>
+                          <span style={{ color: C.dim, fontSize: "20px", lineHeight: 1, marginLeft: "2px" }}>›</span>
+                        </div>
+                      ) : (
+                        <span style={{
+                          color: C.dim, fontSize: "20px", marginLeft: "12px",
+                          flexShrink: 0, lineHeight: 1, marginTop: "4px",
+                        }}>›</span>
+                      )}
                     </div>
 
-                    {/* Right — action buttons (superadmin) or arrow */}
-                    {isSuperAdmin ? (
-                      <div
-                        style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "12px", flexShrink: 0 }}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <button className="al-action-btn edit" onClick={e => openEdit(e, tech)}>Edit</button>
-                        <button className="al-action-btn del"  onClick={e => openDelete(e, tech)}>Delete</button>
-                        <span style={{ color: C.dim, fontSize: "20px", lineHeight: 1, marginLeft: "2px" }}>›</span>
-                      </div>
-                    ) : (
-                      <span style={{
-                        color: C.dim, fontSize: "20px", marginLeft: "12px",
-                        flexShrink: 0, lineHeight: 1, marginTop: "4px",
-                      }}>›</span>
-                    )}
+                    {/* Stats row — month-scoped, active sort cell highlighted */}
+                    <div className="al-tech-stats" style={{
+                      display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: "1px", background: C.border, border: `1px solid ${C.border}`,
+                    }}>
+                      {[
+                        {
+                          key:   "entries",
+                          label: "Entries",
+                          value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",
+                          color: C.ink,
+                        },
+                        {
+                          key:   "hours",
+                          label: "Hours",
+                          value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",
+                          color: C.success,
+                        },
+                        {
+                          key:   "labour",
+                          label: "Labour",
+                          value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`,
+                          color: C.amber,
+                        },
+                      ].map(({ key, label, value, color }) => {
+                        const isHighlighted = key === highlightStat;
+                        return (
+                          <div
+                            key={label}
+                            style={{
+                              background: isHighlighted ? `${color}0D` : C.cardAlt,
+                              padding: "10px 8px", textAlign: "center",
+                              borderTop: isHighlighted ? `2px solid ${color}` : "2px solid transparent",
+                              transition: "background 0.15s",
+                            }}
+                          >
+                            <div style={{
+                              fontSize: "8px", fontWeight: "700", letterSpacing: "0.14em",
+                              textTransform: "uppercase",
+                              color: isHighlighted ? color : C.dim,
+                              marginBottom: "5px",
+                            }}>{label}</div>
+                            <div style={{
+                              fontFamily: "'Barlow Condensed', sans-serif",
+                              fontSize: "18px", fontWeight: "700", color, letterSpacing: "0.02em",
+                            }}>{value}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-
-                  {/* Stats row — month-scoped */}
-                  <div className="al-tech-stats" style={{
-                    display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "1px", background: C.border, border: `1px solid ${C.border}`,
-                  }}>
-                    {[
-                      { label: "Entries", value: tech.totalEntries?.toLocaleString("en-IN") ?? "0",           color: C.ink     },
-                      { label: "Hours",   value: (tech.totalHours?.toLocaleString("en-IN") ?? "0") + " hrs",  color: C.success },
-                      { label: "Labour",  value: `₹${Number(tech.totalLabour || 0).toLocaleString("en-IN")}`, color: C.amber   },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} style={{ background: C.cardAlt, padding: "10px 8px", textAlign: "center" }}>
-                        <div style={{
-                          fontSize: "8px", fontWeight: "700", letterSpacing: "0.14em",
-                          textTransform: "uppercase", color: C.dim, marginBottom: "5px",
-                        }}>{label}</div>
-                        <div style={{
-                          fontFamily: "'Barlow Condensed', sans-serif",
-                          fontSize: "18px", fontWeight: "700", color, letterSpacing: "0.02em",
-                        }}>{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Footer count */}
