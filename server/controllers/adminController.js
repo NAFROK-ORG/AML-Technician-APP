@@ -3,7 +3,7 @@ const User       = require("../models/User");
 const Attendance = require("../models/Attendance");
 const { writeAuditLog } = require("../utils/auditLogger");
 
-const VALID_BRANCHES = ["BALLARI", "CHITRADURGA", "HOSPET", "RAICHUR"];
+const { VALID_BRANCHES } = require("../utils/constants");
 
 const isBranchAdmin = (req) => req.user.role === "admin";
 const { normalizeVehicleNo } = require("../utils/vehicleUtils");
