@@ -2,11 +2,15 @@ const mongoose = require("mongoose");
 
 const AuditLogSchema = new mongoose.Schema(
   {
-    action: {
-      type: String,
-      enum: ["DELETE_ENTRY", "EDIT_ENTRY"],
-      required: true,
-    },
+ action: {
+  type: String,
+  enum: [
+    "DELETE_ENTRY",       // admin deleted an entry
+    "EDIT_ENTRY",         // admin edited an entry
+    "EDIT_ENTRY_SELF",    // technician edited their own entry
+  ],
+  required: true,
+},
 
     // Who performed the action — from JWT, never from request body
     performedBy: {
