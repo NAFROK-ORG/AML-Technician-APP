@@ -11,12 +11,12 @@ import { useAuthStore } from "../store/authStore";
    Do not add security-specific items here; the security page has one route.
 ─────────────────────────────────────────────────────────────────── */
 const ADMIN_NAV = [
-  { path: "/admin",               label: "Dashboard",    superadminOnly: false },
-  { path: "/admin/analytics",     label: "Analytics",    superadminOnly: false },
-  { path: "/admin/attendance",    label: "Attendance",   superadminOnly: false },
-  { path: "/admin/vehicle-log",   label: "Vehicle Log",  superadminOnly: false },
-  { path: "/admin/vehicle-search",label: "Vehicle Search", superadminOnly: true },
-  { path: "/admin/audit-log",     label: "Audit Log",    superadminOnly: true  }, // ← NEW
+  { path: "/admin",                label: "Dashboard",      superadminOnly: false },
+  { path: "/admin/analytics",      label: "Analytics",      superadminOnly: false },
+  { path: "/admin/attendance",     label: "Attendance",     superadminOnly: false },
+  { path: "/admin/vehicle-log",    label: "Vehicle Log",    superadminOnly: false },
+  { path: "/admin/vehicle-search", label: "Vehicle Search", superadminOnly: true  },
+  { path: "/admin/audit-log",      label: "Audit Log",      superadminOnly: true  },
 ];
 
 /* ─── Injected styles ──────────────────────────────────────────── */
@@ -47,65 +47,105 @@ const NAV_STYLES = `
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
+    /* Safety net: never let children punch outside the bar */
+    overflow: hidden;
   }
 
-  /* Left side */
+  /* Left side
+     flex: 1        → absorbs all space the right cluster leaves
+     min-width: 0   → allows children to shrink below content size (critical)
+     overflow:hidden → clips anything that still overflows; nothing escapes into right cluster
+  */
   .aml-nav-left {
     display: flex;
     align-items: center;
     height: 52px;
     min-width: 0;
     flex: 1;
+    overflow: hidden;
   }
 
-  /* Brand */
+  /* ── Brand link ──
+     flex-shrink: 0  → brand never gets squished; it is the identity anchor
+     Logo + text sit in a single flex row with a small gap
+  */
   .aml-brand {
     text-decoration: none;
-    line-height: 1;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  /* Logo icon — sized per breakpoint below */
+  .aml-brand-logo {
+    height: 20px;
+    width: auto;
+    display: block;
+    object-fit: contain;
     flex-shrink: 0;
   }
+
+  /* Text stack: AML MOTORS + portal label */
+  .aml-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1;
+    min-width: 0;
+  }
+
   .aml-brand-name {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.06em;
     color: #0A1628;
     text-transform: uppercase;
     line-height: 1;
+    white-space: nowrap;
   }
   .aml-brand-sub {
-    font-size: 7.5px;
-    letter-spacing: 0.16em;
+    font-size: 7px;
+    letter-spacing: 0.14em;
     color: #6B7A99;
     font-weight: 600;
     text-transform: uppercase;
     margin-top: 2px;
+    white-space: nowrap;
   }
 
-  /* Brand/nav divider */
+  /* Brand / nav divider — only shown ≥640px */
   .aml-brand-sep {
     display: none;
     width: 1px;
     height: 22px;
     background: #DDE3EE;
-    margin: 0 16px;
+    margin: 0 10px;
     flex-shrink: 0;
   }
 
-  /* Desktop nav links */
+  /* Desktop nav
+     flex-shrink: 1  → this is the zone that compresses first when space is tight;
+                       the brand and right cluster are protected
+     min-width: 0    → allows it to shrink below natural content width
+     overflow:hidden → clips gracefully instead of pushing siblings
+  */
   .aml-desktop-nav {
     display: none;
     align-items: center;
     height: 52px;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
   }
   .aml-desktop-link {
     height: 52px;
     display: flex;
     align-items: center;
-    padding: 0 13px;
-    font-size: 10px;
+    padding: 0 9px;
+    font-size: 9.5px;
     font-weight: 600;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: #6B7A99;
     text-decoration: none;
@@ -117,11 +157,13 @@ const NAV_STYLES = `
   .aml-desktop-link:hover  { color: #1E3A8A; }
   .aml-desktop-link.active { color: #1E3A8A; border-bottom-color: #1E3A8A; }
 
-  /* Right cluster */
+  /* Right cluster
+     flex-shrink: 0  → never compressed; user info and sign-out are always intact
+  */
   .aml-nav-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
   }
 
@@ -140,7 +182,7 @@ const NAV_STYLES = `
     font-weight: 600;
     color: #0A1628;
     line-height: 1;
-    max-width: 110px;
+    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -153,7 +195,6 @@ const NAV_STYLES = `
     margin-top: 3px;
     font-weight: 600;
   }
-  /* Generic role line — blue for admin/superadmin/security */
   .aml-user-role {
     font-size: 8px;
     letter-spacing: 0.12em;
@@ -162,20 +203,14 @@ const NAV_STYLES = `
     margin-top: 3px;
     font-weight: 600;
   }
-  /* Superadmin gets a purple accent */
-  .aml-user-role--superadmin {
-    color: #7C3AED;
-  }
-  /* Security gets an amber accent */
-  .aml-user-role--security {
-    color: #B45309;
-  }
+  .aml-user-role--superadmin { color: #7C3AED; }
+  .aml-user-role--security   { color: #B45309; }
 
   /* Sign Out button */
   .aml-signout {
     background: transparent;
     border: 1px solid #DDE3EE;
-    padding: 7px 13px;
+    padding: 7px 11px;
     color: #6B7A99;
     font-size: 9px;
     font-weight: 600;
@@ -210,8 +245,8 @@ const NAV_STYLES = `
     transition: border-color 0.15s ease, background 0.15s ease;
     -webkit-appearance: none;
   }
-  .aml-burger:hover      { border-color: #1E3A8A; }
-  .aml-burger.open       { border-color: #1E3A8A; background: #F0F4FF; }
+  .aml-burger:hover { border-color: #1E3A8A; }
+  .aml-burger.open  { border-color: #1E3A8A; background: #F0F4FF; }
   .aml-burger-line {
     width: 15px;
     height: 1.5px;
@@ -276,21 +311,44 @@ const NAV_STYLES = `
   }
   .aml-mobile-signout:hover { color: #DC2626; }
 
-  /* ── Desktop breakpoint ≥640px ── */
+  /* ── 640px — desktop nav appears, tight spacing ─────────────────
+     Logo 20px, link padding 0 9px — fits 4 admin links comfortably,
+     6 superadmin links snugly. nav shrinks before brand or right cluster.
+  ── */
   @media (min-width: 640px) {
-    .aml-nav-bar    { padding: 0 24px; }
-    .aml-nav-right  { gap: 14px; }
-    .aml-brand-sep   { display: block; }
-    .aml-desktop-nav { display: flex; }
+    .aml-nav-bar         { padding: 0 20px; }
+    .aml-nav-right       { gap: 10px; }
+    .aml-brand-sep       { display: block; }
+    .aml-desktop-nav     { display: flex; }
     .aml-signout-desktop { display: block; }
     .aml-burger          { display: none; }
     .aml-mobile-menu     { display: none !important; }
   }
 
+  /* ── 900px — comfortable mid-range ──────────────────────────────
+     Open up link padding and gap a bit. Superadmin's 6 links have
+     more breathing room now.
+  ── */
+  @media (min-width: 900px) {
+    .aml-nav-bar         { padding: 0 24px; }
+    .aml-nav-right       { gap: 12px; }
+    .aml-brand-sep       { margin: 0 13px; }
+    .aml-brand-logo      { height: 22px; }
+    .aml-desktop-link    { padding: 0 11px; font-size: 10px; letter-spacing: 0.13em; }
+  }
+
+  /* ── 1024px — full comfortable layout ──────────────────────────
+     Restore original generous spacing everywhere.
+  ── */
   @media (min-width: 1024px) {
-    .aml-nav-bar    { padding: 0 32px; }
-    .aml-brand-name { font-size: 19px; }
-    .aml-user-name  { max-width: 160px; }
+    .aml-nav-bar         { padding: 0 32px; }
+    .aml-nav-right       { gap: 14px; }
+    .aml-brand-sep       { margin: 0 16px; }
+    .aml-brand-name      { font-size: 18px; }
+    .aml-brand-logo      { height: 24px; }
+    .aml-brand           { gap: 8px; }
+    .aml-desktop-link    { padding: 0 13px; font-size: 10px; letter-spacing: 0.14em; }
+    .aml-user-name       { max-width: 160px; }
   }
 `;
 
@@ -304,11 +362,6 @@ export default function Navbar() {
   const isBranchAdmin  = user?.role === "admin";
   const isSecurity     = user?.role === "security";
 
-  /**
-   * visibleNav — filters ADMIN_NAV based on role.
-   * Security users have no nav items — this array is never rendered for them
-   * since we gate the desktop nav and hamburger behind isAdminOrAbove.
-   */
   const visibleNav = ADMIN_NAV.filter(
     ({ superadminOnly }) => !superadminOnly || isSuperAdmin
   );
@@ -350,25 +403,12 @@ export default function Navbar() {
     navigate("/login");
   };
 
-  /**
-   * homeRoute — where the brand logo links to per role.
-   *   security   → /security
-   *   admin/super → /admin
-   *   technician  → /dashboard
-   */
   const homeRoute = isSecurity
     ? "/security"
     : isAdminOrAbove
     ? "/admin"
     : "/dashboard";
 
-  /**
-   * Portal label under the brand name.
-   *   superadmin → "Super Admin Portal"
-   *   admin      → "Admin Portal"
-   *   security   → "Security Portal"
-   *   technician → "Technician Portal"
-   */
   const portalLabel = isSuperAdmin
     ? "Super Admin Portal"
     : isBranchAdmin
@@ -377,19 +417,10 @@ export default function Navbar() {
     ? "Security Portal"
     : "Technician Portal";
 
-  /**
-   * Role line shown under the user's name in the right cluster.
-   *   superadmin   → purple "Super Admin"
-   *   branch admin → blue "Branch Admin · <BranchName>"
-   *   security     → amber "Security · <BranchName>"
-   *   technician   → gray branch name (or nothing)
-   */
   const renderUserMeta = () => {
     if (isSuperAdmin) {
       return (
-        <div className="aml-user-role aml-user-role--superadmin">
-          Super Admin
-        </div>
+        <div className="aml-user-role aml-user-role--superadmin">Super Admin</div>
       );
     }
     if (isBranchAdmin) {
@@ -406,7 +437,6 @@ export default function Navbar() {
         </div>
       );
     }
-    // Technician
     return user?.branch
       ? <div className="aml-user-branch">{user.branch}</div>
       : null;
@@ -423,13 +453,22 @@ export default function Navbar() {
 
         {/* ── Left: Brand + desktop nav ── */}
         <div className="aml-nav-left">
+
+          {/* Brand: [logo]  AML MOTORS / portal label */}
           <Link to={homeRoute} className="aml-brand">
-            <div className="aml-brand-name">AML MOTORS</div>
-            <div className="aml-brand-sub">{portalLabel}</div>
+            <img
+              src="/aml-motors-pvt.png"
+              alt="AML Motors"
+              className="aml-brand-logo"
+              draggable={false}
+            />
+            <div className="aml-brand-text">
+              <div className="aml-brand-name">AML MOTORS</div>
+              <div className="aml-brand-sub">{portalLabel}</div>
+            </div>
           </Link>
 
           {/* Separator + desktop nav — admin/superadmin only, visible ≥640px */}
-          {/* Security users intentionally have no nav links */}
           {isAdminOrAbove && (
             <>
               <div className="aml-brand-sep" />
@@ -453,13 +492,12 @@ export default function Navbar() {
 
           <div className="aml-vert-sep" />
 
-          {/* User info */}
           <div className="aml-user">
             <div className="aml-user-name">{user?.name}</div>
             {renderUserMeta()}
           </div>
 
-          {/* Technician + Security: sign out always visible in bar */}
+          {/* Technician + Security: sign out always visible */}
           {!isAdminOrAbove && (
             <button className="aml-signout" onClick={handleLogout}>
               Sign Out
