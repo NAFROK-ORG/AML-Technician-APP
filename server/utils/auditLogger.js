@@ -31,7 +31,7 @@ async function writeAuditLog({ action, req, entrySnapshot, changes = null, targe
       performedBy:        req.user.userId,
       performedByName,
       performedByRole:    req.user.role,
-      performedByBranch:  req.user.branch || "",
+      performedByBranch:  req.user.branch || (req.user.role === "superadmin" ? "SUPERADMIN" : ""),
       entryId:            String(entrySnapshot._id),
       entrySnapshot,
       changes,
