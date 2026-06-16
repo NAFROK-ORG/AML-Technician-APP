@@ -14,10 +14,21 @@ const attendanceRoutes  = require("./routes/attendanceRoutes");
 const searchRoutes      = require("./routes/searchRoutes");       // ← new
 const auditRoutes = require("./routes/auditRoutes");
 const app = express();
-
+app.set("trust proxy", 1);
 connectDB();
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc:     ["'none'"],   // deny everything — API serves JSON only
+      connectSrc:     ["'self'"],   // allow same-origin fetch/XHR
+      frameAncestors: ["'none'"],   // prevent this API being embedded in iframes
+      objectSrc:      ["'none'"],
+      baseUri:        ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
 app.use(express.json());
 
