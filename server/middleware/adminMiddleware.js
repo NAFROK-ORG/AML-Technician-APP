@@ -69,4 +69,19 @@ const securityOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { adminOrAbove, superAdminOnly, branchGuard, securityOnly };
+/**
+ * technicianOnly — passes ONLY if role is "technician".
+ *
+ * Used on attendance routes (mark + today) so admins and security users
+ * cannot create attendance records via direct API calls.
+ * Chain: protect → technicianOnly
+ */
+const technicianOnly = (req, res, next) => {
+  if (req.user.role !== "technician") {
+    return res.status(403).json({ message: "Access denied: Technicians only" });
+  }
+  next();
+};
+
+// REPLACE the existing module.exports with:
+module.exports = { adminOrAbove, superAdminOnly, branchGuard, securityOnly, technicianOnly };
