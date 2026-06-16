@@ -1,6 +1,7 @@
 const Entry      = require("../models/Entry");
 const User       = require("../models/User");
 const Attendance = require("../models/Attendance");
+const { writeAuditLog } = require("../utils/auditLogger"); // ADD — needed for editMyEntry audit
 const { calculateIncentive }  = require("../utils/incentiveCalculator");
 const { normalizeVehicleNo }  = require("../utils/vehicleUtils");
 
@@ -173,6 +174,12 @@ const editMyEntry = async (req, res) => {
     if (String(entry.userId) !== String(req.user.userId))
       return res.status(403).json({ message: "Not authorized to edit this entry" });
 
+    // ── AUDIT: Snapshot captured AFTER ownership check, BEFORE any mutation ──
+    // toObject() gives a plain JS object — not a Mongoose doc — so mutations
+    // to `entry` below will NOT retroactively affect this snapshot.
+    const oldSnapshot = entry.toObject();
+    // ─────────────────────────────────────────────────────────────────────────
+
     const { category, vehicleNo, jcNo, hoursWorked, labourAmount, leaveDays, date } = req.body;
 
     const parsedHours  = hoursWorked  !== undefined ? Number(hoursWorked)  : entry.hoursWorked;
@@ -209,8 +216,8 @@ const editMyEntry = async (req, res) => {
       entry.date = newDate;
     }
 
-    if (category !== undefined) entry.category = category;
-    if (jcNo     !== undefined) entry.jcNo     = jcNo.trim();
+    if (category  !== undefined) entry.category = category;
+    if (jcNo      !== undefined) entry.jcNo     = jcNo.trim();
 
     if (vehicleNo !== undefined) {
       entry.vehicleNo     = vehicleNo?.trim() || "";
@@ -222,6 +229,49 @@ const editMyEntry = async (req, res) => {
     entry.leaveDays    = parsedLeave;
 
     await entry.save();
+
+    // ── AUDIT: Compute field-level diff and write log ─────────────────────
+    // Only runs if at least one field actually changed value.
+    // Mirrors the same pattern used in adminController editEntry.
+    // Uses String() coercion so 0 vs "0" doesn't produce false positives.
+    // Date is compared via ISO string so timezone-neutral.
+    const AUDITABLE_FIELDS = [
+      "category", "vehicleNo", "jcNo",
+      "hoursWorked", "labourAmount", "leaveDays", "date",
+    ];
+
+    const changedFields = {};
+    AUDITABLE_FIELDS.forEach((field) => {
+      const oldVal = field === "date"
+        ? (oldSnapshot[field] ? new Date(oldSnapshot[field]).toISOString() : "")
+        : String(oldSnapshot[field] ?? "");
+      const newVal = field === "date"
+        ? (entry[field] ? new Date(entry[field]).toISOString() : "")
+        : String(entry[field] ?? "");
+
+      if (oldVal !== newVal) {
+        changedFields[field] = { from: oldSnapshot[field], to: entry[field] };
+      }
+    });
+
+    if (Object.keys(changedFields).length > 0) {
+      // Fetch the technician's own user doc for the audit record.
+      // req.user.name is already available from protect() middleware,
+      // but we need technicianId too — so a lean DB fetch is necessary.
+      const techUser = await User.findById(req.user.userId)
+        .select("name technicianId")
+        .lean();
+
+      await writeAuditLog({
+        action:        "EDIT_ENTRY_SELF",
+        req,
+        entrySnapshot: oldSnapshot,
+        changes:       changedFields,
+        targetUser:    techUser, // technician is both actor and target here
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     res.json({ message: "Entry updated", entry });
   } catch (err) {
     if (err.name === "ValidationError") {
@@ -231,5 +281,4 @@ const editMyEntry = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
 module.exports = { createEntry, getMyEntries, getMonthlyIncentive, editMyEntry };
