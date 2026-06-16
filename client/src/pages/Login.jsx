@@ -37,15 +37,30 @@ const CORP_STYLES = `
     justify-content: space-between;
   }
 
-  .corp-logo {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: #0A1628;
-    line-height: 1;
-    margin-bottom: 2px;
-  }
+/* Wrapper: logo icon sits left of the text stack */
+.corp-logo-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.corp-logo-img {
+  height: 22px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.corp-logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0A1628;
+  line-height: 1;
+  margin-bottom: 2px;
+}
 
   .corp-logo-tag {
     font-size: 9px;
@@ -355,10 +370,18 @@ export default function Login() {
 
       <header className="corp-header">
         <div className="corp-header-inner">
-          <div>
-            <div className="corp-logo">AML MOTORS</div>
-            <div className="corp-logo-tag">Technician Performance Portal</div>
-          </div>
+    <div className="corp-logo-wrapper">
+  <img
+    src="/aml-motors-pvt.png"
+    alt="AML Motors"
+    className="corp-logo-img"
+    draggable={false}
+  />
+  <div>
+    <div className="corp-logo">AML MOTORS</div>
+    <div className="corp-logo-tag">Technician Performance Portal</div>
+  </div>
+</div>
           <div className="corp-secure-badge">Secure</div>
         </div>
       </header>
