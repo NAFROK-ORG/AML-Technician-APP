@@ -13,7 +13,7 @@ const getAuditLogs = async (req, res) => {
 
     const filter = {};
 
-    if (req.query.action && ["DELETE_ENTRY", "EDIT_ENTRY"].includes(req.query.action)) {
+   if (req.query.action && ["DELETE_ENTRY", "EDIT_ENTRY", "EDIT_ENTRY_SELF"].includes(req.query.action)) {
       filter.action = req.query.action;
     }
 
@@ -41,13 +41,21 @@ const getAuditLogs = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DELETE /api/audit/flush
-// SUPERADMIN ONLY. Permanently deletes ALL audit log records.
-// Not reversible. Logged to console with who/when for forensics.
-// ─────────────────────────────────────────────────────────────────────────────
+// ── DELETE /api/audit/flush — add confirmPhrase gate ─────────────────────────
+// REPLACE the entire flushAuditLogs function with:
+
 const flushAuditLogs = async (req, res) => {
   try {
+    // Defense-in-depth: even if someone hits this endpoint directly via curl/postman,
+    // they still need to know the phrase. The UI enforces it visually; this enforces it
+    // at the API level — both layers must agree.
+    const { confirmPhrase } = req.body;
+    if (confirmPhrase !== "FLUSH ALL LOGS") {
+      return res.status(400).json({
+        message: 'Confirmation phrase incorrect. Type "FLUSH ALL LOGS" exactly.',
+      });
+    }
+
     const result = await AuditLog.deleteMany({});
 
     console.log(
@@ -56,7 +64,7 @@ const flushAuditLogs = async (req, res) => {
     );
 
     res.json({
-      message: "Audit logs flushed.",
+      message:      "Audit logs flushed.",
       deletedCount: result.deletedCount,
     });
   } catch (err) {
