@@ -2,6 +2,7 @@ const Entry      = require("../models/Entry");
 const User       = require("../models/User");
 const Attendance = require("../models/Attendance");
 const { writeAuditLog } = require("../utils/auditLogger");
+const { getOrSet } = require("../utils/cache");
 
 const { VALID_BRANCHES } = require("../utils/constants");
 
@@ -51,6 +52,13 @@ const getBranches = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branch/:branch?month=YYYY-MM
+//
+// CACHED: this aggregation runs on every dashboard load (and again on any
+// poll/refresh). 30s TTL means repeated/concurrent loads for the same
+// branch+month within that window are served from memory instead of
+// re-running the aggregation against M0. Cache key includes branch+year+
+// month0, so different branches/months never collide or serve stale data
+// for each other.
 // ─────────────────────────────────────────────────────────────────────────────
 const getBranchDashboard = async (req, res) => {
   try {
@@ -61,45 +69,50 @@ const getBranchDashboard = async (req, res) => {
     }
 
     const { year, month0 } = parseMonthParam(req.query.month);
-    const { from, to }     = monthDateRange(year, month0);
+    const cacheKey = `branchDashboard:${branch}:${year}-${month0}`;
 
-    const matchStage = { branch, date: { $gte: from, $lt: to } };
+    const payload = await getOrSet(cacheKey, 30, async () => {
+      const { from, to } = monthDateRange(year, month0);
+      const matchStage = { branch, date: { $gte: from, $lt: to } };
 
-    const [stats] = await Entry.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id:             null,
-          totalHours:      { $sum: "$hoursWorked" },
-          totalLabour:     { $sum: "$labourAmount" },
-          totalIncentives: { $sum: "$incentive" },
-          totalLeaveDays:  { $sum: "$leaveDays" },
-          totalEntries:    { $count: {} },
+      const [stats] = await Entry.aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id:             null,
+            totalHours:      { $sum: "$hoursWorked" },
+            totalLabour:     { $sum: "$labourAmount" },
+            totalIncentives: { $sum: "$incentive" },
+            totalLeaveDays:  { $sum: "$leaveDays" },
+            totalEntries:    { $count: {} },
+          },
         },
-      },
-    ]);
+      ]);
 
-    const categoryBreakdown = await Entry.aggregate([
-      { $match: matchStage },
-      { $group: { _id: "$category", count: { $count: {} } } },
-      { $sort: { count: -1 } },
-    ]);
+      const categoryBreakdown = await Entry.aggregate([
+        { $match: matchStage },
+        { $group: { _id: "$category", count: { $count: {} } } },
+        { $sort: { count: -1 } },
+      ]);
 
-    const technicianCount = await User.countDocuments({ branch, role: "technician" });
+      const technicianCount = await User.countDocuments({ branch, role: "technician" });
 
-    res.json({
-      branch,
-      technicianCount,
-      totalHours:      stats?.totalHours      || 0,
-      totalLabour:     stats?.totalLabour     || 0,
-      totalIncentives: stats?.totalIncentives || 0,
-      totalLeaveDays:  stats?.totalLeaveDays  || 0,
-      totalEntries:    stats?.totalEntries    || 0,
-      avgHoursPerTechnician: technicianCount
-        ? ((stats?.totalHours || 0) / technicianCount).toFixed(1)
-        : 0,
-      categoryBreakdown,
+      return {
+        branch,
+        technicianCount,
+        totalHours:      stats?.totalHours      || 0,
+        totalLabour:     stats?.totalLabour     || 0,
+        totalIncentives: stats?.totalIncentives || 0,
+        totalLeaveDays:  stats?.totalLeaveDays  || 0,
+        totalEntries:    stats?.totalEntries    || 0,
+        avgHoursPerTechnician: technicianCount
+          ? ((stats?.totalHours || 0) / technicianCount).toFixed(1)
+          : 0,
+        categoryBreakdown,
+      };
     });
+
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -421,6 +434,12 @@ const exportTechnicianData = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/analytics
+//
+// CACHED: the heaviest read in the system — 5 aggregations running in
+// parallel, including a $lookup. 30s TTL collapses repeated/concurrent loads
+// for the same branch+date-range filter combination. Date validation runs
+// BEFORE the cache wrapper so an invalid 'from'/'to' still returns 400
+// immediately and is never cached.
 // ─────────────────────────────────────────────────────────────────────────────
 const getAnalytics = async (req, res) => {
   try {
@@ -447,126 +466,132 @@ const getAnalytics = async (req, res) => {
       }
     }
 
-    const [overviewArr, byBranch, byCategory, byMonth, topTechs] =
-      await Promise.all([
+    const cacheKey = `analytics:${JSON.stringify(matchStage)}:${isBranchAdmin(req) ? req.user.branch : "all"}`;
 
-        Entry.aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id:             null,
-              totalLabour:     { $sum: "$labourAmount" },
-              totalHours:      { $sum: "$hoursWorked" },
-              totalIncentives: { $sum: "$incentive" },
-              totalLeaveDays:  { $sum: "$leaveDays" },
-              totalEntries:    { $sum: 1 },
-            },
-          },
-        ]),
+    const payload = await getOrSet(cacheKey, 30, async () => {
+      const [overviewArr, byBranch, byCategory, byMonth, topTechs] =
+        await Promise.all([
 
-        Entry.aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id:             "$branch",
-              totalLabour:     { $sum: "$labourAmount" },
-              totalHours:      { $sum: "$hoursWorked" },
-              totalIncentives: { $sum: "$incentive" },
-              totalEntries:    { $sum: 1 },
-              totalLeaveDays:  { $sum: "$leaveDays" },
-            },
-          },
-          { $sort: { totalLabour: -1 } },
-        ]),
-
-        Entry.aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id:         "$category",
-              totalLabour: { $sum: "$labourAmount" },
-              totalHours:  { $sum: "$hoursWorked" },
-              count:       { $sum: 1 },
-            },
-          },
-          { $sort: { totalLabour: -1 } },
-        ]),
-
-        Entry.aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id: {
-                year:  { $year:  "$date" },
-                month: { $month: "$date" },
+          Entry.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id:             null,
+                totalLabour:     { $sum: "$labourAmount" },
+                totalHours:      { $sum: "$hoursWorked" },
+                totalIncentives: { $sum: "$incentive" },
+                totalLeaveDays:  { $sum: "$leaveDays" },
+                totalEntries:    { $sum: 1 },
               },
-              totalLabour:     { $sum: "$labourAmount" },
-              totalHours:      { $sum: "$hoursWorked" },
-              totalIncentives: { $sum: "$incentive" },
-              totalEntries:    { $sum: 1 },
             },
-          },
-          { $sort: { "_id.year": 1, "_id.month": 1 } },
-          { $limit: 12 },
-        ]),
+          ]),
 
-        Entry.aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id:          "$userId",
-              totalLabour:  { $sum: "$labourAmount" },
-              totalHours:   { $sum: "$hoursWorked" },
-              totalEntries: { $sum: 1 },
-              branch:       { $first: "$branch" },
+          Entry.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id:             "$branch",
+                totalLabour:     { $sum: "$labourAmount" },
+                totalHours:      { $sum: "$hoursWorked" },
+                totalIncentives: { $sum: "$incentive" },
+                totalEntries:    { $sum: 1 },
+                totalLeaveDays:  { $sum: "$leaveDays" },
+              },
             },
-          },
-          { $sort: { totalLabour: -1 } },
-          { $limit: 10 },
-          {
-            $lookup: {
-              from:         "users",
-              localField:   "_id",
-              foreignField: "_id",
-              as:           "userInfo",
-            },
-          },
-          { $unwind: "$userInfo" },
-          {
-            $project: {
-              totalLabour:  1,
-              totalHours:   1,
-              totalEntries: 1,
-              branch:       1,
-              name:         "$userInfo.name",
-              technicianId: "$userInfo.technicianId",
-            },
-          },
-        ]),
-      ]);
+            { $sort: { totalLabour: -1 } },
+          ]),
 
-    const MONTH_NAMES = [
-      "Jan","Feb","Mar","Apr","May","Jun",
-      "Jul","Aug","Sep","Oct","Nov","Dec",
-    ];
+          Entry.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id:         "$category",
+                totalLabour: { $sum: "$labourAmount" },
+                totalHours:  { $sum: "$hoursWorked" },
+                count:       { $sum: 1 },
+              },
+            },
+            { $sort: { totalLabour: -1 } },
+          ]),
 
-    res.json({
-      overview: overviewArr[0] || {
-        totalLabour: 0, totalHours: 0, totalIncentives: 0,
-        totalLeaveDays: 0, totalEntries: 0,
-      },
-      byBranch,
-      byCategory,
-      byMonth: byMonth.map((m) => ({
-        label:           `${MONTH_NAMES[m._id.month - 1]} ${String(m._id.year).slice(2)}`,
-        totalLabour:     m.totalLabour,
-        totalHours:      m.totalHours,
-        totalIncentives: m.totalIncentives,
-        totalEntries:    m.totalEntries,
-      })),
-      topTechs,
-      scopedBranch: isBranchAdmin(req) ? req.user.branch : null,
+          Entry.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id: {
+                  year:  { $year:  "$date" },
+                  month: { $month: "$date" },
+                },
+                totalLabour:     { $sum: "$labourAmount" },
+                totalHours:      { $sum: "$hoursWorked" },
+                totalIncentives: { $sum: "$incentive" },
+                totalEntries:    { $sum: 1 },
+              },
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } },
+            { $limit: 12 },
+          ]),
+
+          Entry.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id:          "$userId",
+                totalLabour:  { $sum: "$labourAmount" },
+                totalHours:   { $sum: "$hoursWorked" },
+                totalEntries: { $sum: 1 },
+                branch:       { $first: "$branch" },
+              },
+            },
+            { $sort: { totalLabour: -1 } },
+            { $limit: 10 },
+            {
+              $lookup: {
+                from:         "users",
+                localField:   "_id",
+                foreignField: "_id",
+                as:           "userInfo",
+              },
+            },
+            { $unwind: "$userInfo" },
+            {
+              $project: {
+                totalLabour:  1,
+                totalHours:   1,
+                totalEntries: 1,
+                branch:       1,
+                name:         "$userInfo.name",
+                technicianId: "$userInfo.technicianId",
+              },
+            },
+          ]),
+        ]);
+
+      const MONTH_NAMES = [
+        "Jan","Feb","Mar","Apr","May","Jun",
+        "Jul","Aug","Sep","Oct","Nov","Dec",
+      ];
+
+      return {
+        overview: overviewArr[0] || {
+          totalLabour: 0, totalHours: 0, totalIncentives: 0,
+          totalLeaveDays: 0, totalEntries: 0,
+        },
+        byBranch,
+        byCategory,
+        byMonth: byMonth.map((m) => ({
+          label:           `${MONTH_NAMES[m._id.month - 1]} ${String(m._id.year).slice(2)}`,
+          totalLabour:     m.totalLabour,
+          totalHours:      m.totalHours,
+          totalIncentives: m.totalIncentives,
+          totalEntries:    m.totalEntries,
+        })),
+        topTechs,
+        scopedBranch: isBranchAdmin(req) ? req.user.branch : null,
+      };
     });
+
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Analytics fetch failed" });
