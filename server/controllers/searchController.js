@@ -1,4 +1,5 @@
-const Entry = require("../models/Entry");
+const Entry       = require("../models/Entry");
+const SecurityLog = require("../models/SecurityLog"); // gate log enrichment
 
 const LIMIT     = 10;
 const MIN_CHARS = 3;
@@ -54,6 +55,13 @@ function buildVehicleRegex(rawQuery) {
  *
  * vehicleNo is optional on Entry — entries without it default to "".
  * The regex never matches "" so those entries are naturally excluded.
+ *
+ * Gate log enrichment (added):
+ *   After the main Entry fetch, one batched SecurityLog query attaches
+ *   gateLoggedAt to each result — the timestamp of the most recent gate
+ *   log for that vehicle+branch that occurred before the entry was filed.
+ *   Entries with no matching gate log receive gateLoggedAt: null and the
+ *   frontend badge is simply absent. No N+1, no data mutation.
  */
 exports.vehicleSearch = async (req, res) => {
   try {
@@ -100,8 +108,75 @@ exports.vehicleSearch = async (req, res) => {
       Entry.countDocuments(filter),
     ]);
 
+    // ── Gate log enrichment (batched — no N+1) ────────────────────
+    //
+    // For each entry on this page, find the most recent SecurityLog for
+    // that vehicle+branch where loggedAt ≤ entry.createdAt. This tells
+    // the admin which gate visit this job card belongs to.
+    //
+    // Why loggedAt ≤ entry.createdAt:
+    //   The gate log always precedes (or coincides with) the job card
+    //   being filed. Using createdAt (not entry.date) as the upper bound
+    //   is correct because entry.date can be backdated by the technician
+    //   while createdAt is the immutable DB insertion timestamp.
+    //
+    // Multiple visits handled correctly:
+    //   The descending scan finds the CLOSEST gate log before the entry
+    //   was filed — not just any log for that vehicle. So if a vehicle
+    //   visited June 14 and June 16, a JC filed June 17 correctly maps
+    //   to the June 16 gate log, not June 14.
+    //
+    // Safe fallback:
+    //   - No vehicleNoNorm on older entries → .filter(Boolean) skips them
+    //   - No matching gate log → gateLoggedAt: null → badge absent in UI
+    //   - SecurityLog query throws → outer catch returns 500 as before
+    //   - entries is empty → block is skipped entirely
+
+    let enrichedEntries = entries;
+
+    if (entries.length > 0) {
+      const vehicleNorms = [
+        ...new Set(entries.map(e => e.vehicleNoNorm).filter(Boolean)),
+      ];
+
+      if (vehicleNorms.length > 0) {
+        // One batched query for all vehicles on this page — never N+1
+        const gateLogs = await SecurityLog.find({
+          vehicleNoNorm: { $in: vehicleNorms },
+        })
+          .select("vehicleNoNorm branch loggedAt")
+          .sort({ loggedAt: 1 }) // ascending so reverse scan gives most-recent-first
+          .lean();
+
+        // Build lookup: "vehicleNoNorm|branch" → SecurityLog[] (ascending loggedAt)
+        const gateMap = new Map();
+        for (const log of gateLogs) {
+          const key = `${log.vehicleNoNorm}|${log.branch}`;
+          if (!gateMap.has(key)) gateMap.set(key, []);
+          gateMap.get(key).push(log); // already ascending from DB sort
+        }
+
+        enrichedEntries = entries.map(entry => {
+          const key   = `${entry.vehicleNoNorm}|${entry.branch}`;
+          const logs  = gateMap.get(key) || [];
+          const filed = new Date(entry.createdAt).getTime();
+
+          // Descending scan: first match is the closest gate log before filing
+          let gateLoggedAt = null;
+          for (let i = logs.length - 1; i >= 0; i--) {
+            if (new Date(logs[i].loggedAt).getTime() <= filed) {
+              gateLoggedAt = logs[i].loggedAt;
+              break;
+            }
+          }
+
+          return { ...entry, gateLoggedAt };
+        });
+      }
+    }
+
     return res.status(200).json({
-      results:    entries,
+      results:    enrichedEntries,
       total,
       page:       safePage,
       totalPages: Math.ceil(total / LIMIT),
