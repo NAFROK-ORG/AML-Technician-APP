@@ -244,7 +244,17 @@ const VS_STYLES = `
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
-
+.vs-gate-badge {
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  color: #16A34A;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
   /* ── Technician row — stacked layout ──────────────────────────
      Line 1: Name  +  Employee ID (horizontal, tight)
      Line 2: Technician type badge
@@ -413,7 +423,14 @@ function fmtDate(d) {
     timeZone: "Asia/Kolkata",
   });
 }
-
+/** Gate date badge: "16 Jun" — short, no year, IST-safe */
+function fmtGateDate(d) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("en-IN", {
+    day: "numeric", month: "short",
+    timeZone: "Asia/Kolkata",
+  });
+}
 /** Full datetime: "3 Jun 2026, 10:42 AM" */
 function fmtDateTime(d) {
   if (!d) return "—";
@@ -611,10 +628,13 @@ export default function VehicleSearch() {
                             <div className="vs-vehicle-no">
                               {entry.vehicleNo || "—"}
                             </div>
-                            <div className="vs-card-badges">
-                              <span className="vs-branch-badge">{entry.branch || "—"}</span>
-                              <span className="vs-date-badge">{fmtDate(entry.date)}</span>
-                            </div>
+                           <div className="vs-card-badges">
+  <span className="vs-branch-badge">{entry.branch || "—"}</span>
+  {entry.gateLoggedAt && (
+    <span className="vs-gate-badge">Gate · {fmtGateDate(entry.gateLoggedAt)}</span>
+  )}
+  <span className="vs-date-badge">{fmtDate(entry.date)}</span>
+</div>
                           </div>
 
                           {/* Technician — name + id / type badge (stacked) */}
@@ -666,9 +686,10 @@ export default function VehicleSearch() {
 
                             {/* Logged — spans 2 cols (full width on mobile, 2/3 on desktop) */}
                             <div className="vs-detail-cell vs-detail-cell--span2">
-                              <div className="vs-detail-label">Logged</div>
+                            <div className="vs-detail-label">Filed At</div>
                               <div className="vs-detail-value timestamp">
                                 {fmtDateTime(entry.createdAt)}
+                                
                               </div>
                             </div>
 
