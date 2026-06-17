@@ -94,8 +94,25 @@ const editLog = async (req, res) => {
 };
 
 // ─── GET /api/security/board ──────────────────────────────────────────────────
-// OPTIMIZED: replaced N+1 Entry.find() loop with a single batched Entry.find()
-// + JS-level partitioning. Response shape is identical to the original.
+//
+// Pipeline overview (5 steps + 1 fix step):
+//
+//   1. Fetch all SecurityLogs for the board date/branch/search filter.
+//   2. Build logGroups: Map of "vehicleNoNorm|branch" → sorted SecurityLog[].
+//  2.5 FIX — Cross-date next-log lookup:
+//      Find the earliest SecurityLog for each vehicle on any date AFTER the
+//      board date. This gives the true upper bound for entry attribution when
+//      a vehicle makes multiple visits across different calendar dates.
+//      Without this, entries from a later visit bleed into an earlier board
+//      date because the partition algorithm's fallback was Infinity.
+//   3. ONE batched Entry.find() for all vehicles (no N+1).
+//   4. Partition each Entry into the correct SecurityLog window using:
+//        a. intraDayNextTime  — next log for the same vehicle on the same day
+//        b. crossDateNextTime — earliest log for the same vehicle on a future day
+//      The effective upper bound is Math.min(a, b), or whichever is available,
+//      or Infinity if neither exists (vehicle has not revisited).
+//   5. Assemble paginated response (shape unchanged — no frontend changes needed).
+//
 // ─────────────────────────────────────────────────────────────────────────────
 const getBoardLogs = async (req, res) => {
   try {
@@ -121,9 +138,9 @@ const getBoardLogs = async (req, res) => {
       filter.vehicleNoNorm = { $regex: normQ, $options: "i" };
     }
 
-    // ── 1. Fetch all matching logs for the day ─────────────────────────────
-    // Same query as before. Sorted by vehicleNoNorm + loggedAt — the natural
-    // order the linking algorithm requires.
+    // ── 1. Fetch all matching logs for the board date ──────────────────────
+    // Same query as before — date-scoped, branch-scoped when applicable,
+    // sorted for the linking algorithm.
     const allLogs = await SecurityLog.find(filter)
       .populate("loggedBy", "name")
       .sort({ vehicleNoNorm: 1, loggedAt: 1 })
@@ -132,7 +149,7 @@ const getBoardLogs = async (req, res) => {
     const total      = allLogs.length;
     const totalPages = Math.ceil(total / LIMIT);
 
-    // Short-circuit: no logs → skip the entry query entirely
+    // Short-circuit: no logs → skip everything
     if (total === 0) {
       return res.json({
         logs:            [],
@@ -145,11 +162,10 @@ const getBoardLogs = async (req, res) => {
       });
     }
 
-    // ── 2. Pre-compute log groups per (vehicleNoNorm|branch) key ────────────
-    // allLogs is already sorted by { vehicleNoNorm: 1, loggedAt: 1 } from the
-    // DB query, so each group's array is naturally in ascending loggedAt order.
-    // This replaces the O(n²) allLogs.find() scan that was inside the old map.
-    const logGroups = new Map(); // `${vehicleNoNorm}|${branch}` → SecurityLog[]
+    // ── 2. Build logGroups ─────────────────────────────────────────────────
+    // allLogs is already sorted { vehicleNoNorm: 1, loggedAt: 1 } from the
+    // DB — each group's array is naturally in ascending loggedAt order.
+    const logGroups       = new Map(); // "vehicleNoNorm|branch" → SecurityLog[]
     let   globalMinLoggedAt = Infinity;
 
     for (const log of allLogs) {
@@ -161,19 +177,77 @@ const getBoardLogs = async (req, res) => {
       if (t < globalMinLoggedAt) globalMinLoggedAt = t;
     }
 
-    // ── 3. ONE batched Entry query for all vehicles ────────────────────────
-    // Old code: N Entry.find() calls (one per log) + N populate calls.
-    // New code: 1 Entry.find() with $in on vehicleNoNorm + 1 populate.
+    // ── 2.5. Cross-date next-log lookup ───────────────────────────────────
     //
-    // createdAt lower-bound = earliest loggedAt across all logs.
-    // No upper-bound cap — by design (a technician can log a job card on D+1
-    // for a vehicle that arrived on D; capping at midnight drops valid entries).
+    // WHY THIS EXISTS:
+    //   The original partition algorithm used nextLogTime = Infinity for the
+    //   last log of each vehicle on the board date (no subsequent log existed
+    //   within the same date's logGroups). This caused entries from a later
+    //   visit (e.g. June 19 job card) to be incorrectly attributed to an
+    //   earlier board date's log (e.g. June 14 visit) because:
+    //     entryTime (June 19) >= logTime (June 14) → true
+    //     entryTime (June 19) < Infinity            → true  ← wrong
     //
-    // Branch filter: applied when a specific branch is active (reduces scan).
-    // When superadmin views all branches, omit branch filter — the JS grouping
-    // below uses (vehicleNoNorm|branch) key and naturally isolates each branch.
-    const vehicleNorms = [...new Set(allLogs.map((l) => l.vehicleNoNorm))];
+    // THE FIX:
+    //   Run one aggregation to find, per vehicle+branch, the earliest
+    //   SecurityLog that exists on any date strictly after the board date.
+    //   Use its loggedAt as the cross-date upper bound in step 4.
+    //
+    // BOUNDARY — nextMidnight vs globalMaxLoggedAt:
+    //   We use targetDate + 24h (next UTC midnight) as the $gte cutoff, NOT
+    //   the highest loggedAt in allLogs. Reason: same-day logs all share
+    //   date === targetDate and their loggedAt is somewhere within that day.
+    //   nextMidnight cleanly separates "today's logs" (already in logGroups)
+    //   from "future logs" (what we're looking for), with no overlap.
+    //
+    // EXISTING DATA SAFETY:
+    //   - Vehicles without future visits → crossDateNextMap has no entry →
+    //     nextLogTime falls back to Infinity → identical to original behavior.
+    //   - Vehicles with a same-day return → intraDayNextTime handles it
+    //     (already worked correctly before this change).
+    //   - Vehicles with a future-date return → now correctly bounded.
+    //
+    // INDEX USED: { vehicleNoNorm: 1, branch: 1, loggedAt: 1 }
+    //   The $match on vehicleNoNorm ($in) and loggedAt ($gte) lets MongoDB use
+    //   this compound index efficiently. At 36k logs/year this aggregation
+    //   runs in single-digit ms.
 
+    const vehicleNorms = [...new Set(allLogs.map((l) => l.vehicleNoNorm))];
+    const nextMidnight = new Date(targetDate.getTime() + 24 * 60 * 60 * 1000);
+
+    const crossDateNextLogDocs = await SecurityLog.aggregate([
+      {
+        $match: {
+          vehicleNoNorm: { $in: vehicleNorms },
+          ...(branch ? { branch } : {}),
+          loggedAt: { $gte: nextMidnight }, // strictly future dates only
+        },
+      },
+      // Sort first so $first inside $group picks the earliest (soonest) log.
+      { $sort: { vehicleNoNorm: 1, branch: 1, loggedAt: 1 } },
+      {
+        $group: {
+          _id:         { vehicleNoNorm: "$vehicleNoNorm", branch: "$branch" },
+          nextLoggedAt: { $first: "$loggedAt" },
+        },
+      },
+    ]);
+
+    // "KA14MP1212|BALLARI" → nextLoggedAt (ms timestamp)
+    // Empty map when no vehicle has returned on a future date — safe default.
+    const crossDateNextMap = new Map();
+    for (const doc of crossDateNextLogDocs) {
+      const key = `${doc._id.vehicleNoNorm}|${doc._id.branch}`;
+      crossDateNextMap.set(key, new Date(doc.nextLoggedAt).getTime());
+    }
+
+    // ── 3. ONE batched Entry query for all vehicles ────────────────────────
+    // Fetches all entries since the earliest log time on this board date.
+    // No upper bound on createdAt intentionally: an entry on D+1 legitimately
+    // belongs to a log on D when no re-entry exists yet (the crossDateNextMap
+    // step handles narrowing in the partition, not here). Adding a global
+    // $lte here would incorrectly drop valid entries for vehicles that haven't
+    // returned yet but whose job card was filed the next day.
     const entryFilter = {
       vehicleNoNorm: { $in: vehicleNorms },
       createdAt:     { $gte: new Date(globalMinLoggedAt) },
@@ -182,21 +256,26 @@ const getBoardLogs = async (req, res) => {
 
     const allEntries = await Entry.find(entryFilter)
       .populate("userId", "name technicianId technicianType")
-      .sort({ createdAt: 1 }) // ascending — same as original per-log sort
+      .sort({ createdAt: 1 }) // ascending — same as original
       .lean();
 
-    // ── 4. Partition entries to their owning log ───────────────────────────
-    // For each entry, find its log by descending through the sorted log group
-    // for that vehicle — stops at the last log whose loggedAt ≤ entry.createdAt,
-    // then verifies entry.createdAt < nextLog.loggedAt (upper bound).
+    // ── 4. Partition entries into their correct SecurityLog window ─────────
     //
-    // Correctness guarantee: the groups are sorted ascending by loggedAt, so
-    // scanning from the end finds the correct window in O(visits-per-vehicle)
-    // steps — at most a few iterations for any realistic vehicle history.
+    // For each entry, find the owning log by descending scan within the
+    // sorted log group for that vehicle+branch. Stops at the last log whose
+    // loggedAt ≤ entry.createdAt, then verifies entry.createdAt < nextLogTime.
+    //
+    // nextLogTime resolution (tighter of whatever is available):
+    //   a) intraDayNextTime  — next log for this vehicle on the same board date
+    //                          (same as original algorithm — unchanged)
+    //   b) crossDateNextTime — earliest log for this vehicle on a future date
+    //                          (NEW — the fix for cross-date bleeding)
+    //   Effective bound = Math.min(a, b) if both exist, else whichever exists,
+    //   else Infinity (vehicle hasn't returned at all — open window, correct).
     const entryMap = new Map(); // log._id.toString() → Entry[]
 
     for (const entry of allEntries) {
-      const key           = `${entry.vehicleNoNorm}|${entry.branch}`;
+      const key            = `${entry.vehicleNoNorm}|${entry.branch}`;
       const logsForVehicle = logGroups.get(key);
 
       // Entry's vehicle wasn't in today's logs for this branch — skip
@@ -207,12 +286,26 @@ const getBoardLogs = async (req, res) => {
       // Descending scan: find the last log whose loggedAt ≤ entry.createdAt
       for (let i = logsForVehicle.length - 1; i >= 0; i--) {
         const logTime = new Date(logsForVehicle[i].loggedAt).getTime();
+
         if (entryTime >= logTime) {
-          // Verify upper bound: entry must precede the next visit for this vehicle
-          const nextLogTime =
+
+          // a) Intra-day upper bound (original behavior, unchanged)
+          const intraDayNextTime =
             i + 1 < logsForVehicle.length
               ? new Date(logsForVehicle[i + 1].loggedAt).getTime()
-              : Infinity;
+              : null;
+
+          // b) Cross-date upper bound (new — null when vehicle hasn't returned)
+          const crossDateNextTime = crossDateNextMap.get(key) ?? null;
+
+          // Effective upper bound: tightest bound wins.
+          // If neither exists → Infinity (open window for vehicles with no return).
+          let nextLogTime;
+          if (intraDayNextTime !== null && crossDateNextTime !== null) {
+            nextLogTime = Math.min(intraDayNextTime, crossDateNextTime);
+          } else {
+            nextLogTime = intraDayNextTime ?? crossDateNextTime ?? Infinity;
+          }
 
           if (entryTime < nextLogTime) {
             const lid = logsForVehicle[i]._id.toString();
@@ -225,7 +318,7 @@ const getBoardLogs = async (req, res) => {
       }
     }
 
-    // ── 5. Assemble full result (same shape as original) ─────────────────
+    // ── 5. Assemble full result (response shape identical to original) ──────
     const allWithEntries = allLogs.map((log) => {
       const entries = entryMap.get(log._id.toString()) || [];
       return {
@@ -241,7 +334,7 @@ const getBoardLogs = async (req, res) => {
       safePage * LIMIT
     );
 
-    // Totals derived from the same allWithEntries as the table — no drift
+    // Totals from the full result — no drift between displayed and total counts
     let totalAssigned   = 0;
     let totalUnassigned = 0;
     for (const log of allWithEntries) {
@@ -263,4 +356,5 @@ const getBoardLogs = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
 module.exports = { createLog, getTodayLogs, editLog, getBoardLogs };
