@@ -23,6 +23,13 @@ function fmtDate(iso) {
     weekday: "short", day: "numeric", month: "short",
   }).toUpperCase();
 }
+
+function fmtJobDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric", month: "short",
+  }).toUpperCase(); // → "15 JUN"
+}
 // ── NEW: combined date + time, e.g. "10 JUN, 09:18 AM" ────────────────────────
 // Used everywhere a timestamp is shown, so logs/entries spanning multiple days
 // are never ambiguous (previously only the time was shown, which was misleading
@@ -846,8 +853,8 @@ function LogCard({ log, showBranch }) {
                 </div>
                 <span className="vlb-entry-jc">{entry.jcNo}</span>
                 <span className="vlb-entry-cat">{entry.category}</span>
-                <div className="vlb-entry-time-wrap">
-                  <span className="vlb-entry-time">{fmtDateTime(entry.createdAt)}</span>
+                <div className="vlb-entry-time-wrap">       
+<span className="vlb-entry-time">{fmtJobDate(entry.date)}</span>
                   {gapMs != null && (
                     <span className="vlb-entry-gap good">
                       +{formatDuration(gapMs)} {gapLabel}
