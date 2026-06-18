@@ -130,48 +130,52 @@ const getBranchTechnicians = async (req, res) => {
     }
 
     const { year, month0 } = parseMonthParam(req.query.month);
-    const { from, to }     = monthDateRange(year, month0);
+    const cacheKey = `branchTechnicians:${branch}:${year}-${month0}`;
 
-    const technicians = await User
-      .find({ branch, role: "technician" })
-      .select("-password")
-      .lean();
+    const result = await getOrSet(cacheKey, 30, async () => {
+      const { from, to } = monthDateRange(year, month0);
 
-    if (technicians.length === 0) return res.json([]);
+      const technicians = await User
+        .find({ branch, role: "technician" })
+        .select("-password")
+        .lean();
 
-    const techIds = technicians.map((t) => t._id);
+      if (technicians.length === 0) return [];
 
-    const summaries = await Entry.aggregate([
-      {
-        $match: {
-          userId: { $in: techIds },
-          date:   { $gte: from, $lt: to },
+      const techIds = technicians.map((t) => t._id);
+
+      const summaries = await Entry.aggregate([
+        {
+          $match: {
+            userId: { $in: techIds },
+            date:   { $gte: from, $lt: to },
+          },
         },
-      },
-      {
-        $group: {
-          _id:          "$userId",
-          totalEntries: { $count: {} },
-          totalHours:   { $sum: "$hoursWorked" },
-          totalLabour:  { $sum: "$labourAmount" },
+        {
+          $group: {
+            _id:          "$userId",
+            totalEntries: { $count: {} },
+            totalHours:   { $sum: "$hoursWorked" },
+            totalLabour:  { $sum: "$labourAmount" },
+          },
         },
-      },
-    ]);
+      ]);
 
-    const summaryMap = new Map(summaries.map((s) => [s._id.toString(), s]));
+      const summaryMap = new Map(summaries.map((s) => [s._id.toString(), s]));
 
-    const result = technicians.map((tech) => {
-      const s = summaryMap.get(tech._id.toString()) || {};
-      return {
-        id:             tech._id,
-        name:           tech.name,
-        technicianId:   tech.technicianId,
-        email:          tech.email,
-        technicianType: tech.technicianType || null,
-        totalEntries:   s.totalEntries || 0,
-        totalHours:     s.totalHours   || 0,
-        totalLabour:    s.totalLabour  || 0,
-      };
+      return technicians.map((tech) => {
+        const s = summaryMap.get(tech._id.toString()) || {};
+        return {
+          id:             tech._id,
+          name:           tech.name,
+          technicianId:   tech.technicianId,
+          email:          tech.email,
+          technicianType: tech.technicianType || null,
+          totalEntries:   s.totalEntries || 0,
+          totalHours:     s.totalHours   || 0,
+          totalLabour:    s.totalLabour  || 0,
+        };
+      });
     });
 
     res.json(result);
@@ -411,6 +415,8 @@ const deleteEntry = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/technician/:userId/export
 // ─────────────────────────────────────────────────────────────────────────────
+const EXPORT_LIMIT = 5000;
+
 const exportTechnicianData = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -425,8 +431,17 @@ const exportTechnicianData = async (req, res) => {
       });
     }
 
-    const entries = await Entry.find({ userId }).sort({ date: -1 }).lean();
-    res.json({ user: targetUser, entries });
+    // Count first — avoids loading the full set just to check size
+    const totalCount = await Entry.countDocuments({ userId });
+    const truncated  = totalCount > EXPORT_LIMIT;
+
+    const entries = await Entry
+      .find({ userId })
+      .sort({ date: -1 })
+      .limit(EXPORT_LIMIT)
+      .lean();
+
+    res.json({ user: targetUser, entries, truncated, totalCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
