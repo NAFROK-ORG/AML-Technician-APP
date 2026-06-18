@@ -82,27 +82,34 @@ const createEntry = async (req, res) => {
   }
 };
 
-// ─── GET /api/entries/my ─────────────────────────────────────────────────────
 const getMyEntries = async (req, res) => {
   try {
     const page  = Math.max(parseInt(req.query.page,  10) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
 
+    // ── Optional month scope ──────────────────────────────────────
+    const filter = { userId: req.user.userId };
+    const yearParam  = parseInt(req.query.year,  10);
+    const monthParam = parseInt(req.query.month, 10);
+
+    if (yearParam && monthParam && monthParam >= 1 && monthParam <= 12) {
+      filter.date = {
+        $gte: new Date(Date.UTC(yearParam, monthParam - 1, 1)),
+        $lt:  new Date(Date.UTC(yearParam, monthParam,     1)),
+      };
+    }
+    // ─────────────────────────────────────────────────────────────
+
     const [entries, total] = await Promise.all([
-      Entry.find({ userId: req.user.userId })
+      Entry.find(filter)
         .sort({ date: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Entry.countDocuments({ userId: req.user.userId }),
+      Entry.countDocuments(filter),
     ]);
 
-    res.json({
-      entries,
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-    });
+    res.json({ entries, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
