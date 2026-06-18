@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
@@ -382,14 +382,21 @@ export default function AdminTechnicianList() {
 
   // ── Derived list ──
   // Sort is month-scoped — all stats come from the month-scoped API call
-  const sorted = [...technicians].sort((a, b) => {
+// ── Derived list ──
+const sorted = useMemo(() =>
+  [...technicians].sort((a, b) => {
     if (sortBy === "hours")   return (b.totalHours   ?? 0) - (a.totalHours   ?? 0);
     if (sortBy === "entries") return (b.totalEntries ?? 0) - (a.totalEntries ?? 0);
     return (b.totalLabour ?? 0) - (a.totalLabour ?? 0);
-  });
+  }),
+  [technicians, sortBy]
+);
 
-  // rankOf reflects the active sort — so #1 always means top in the chosen metric
-  const rankOf = (t) => sorted.findIndex(x => x.id === t.id);
+// O(n) lookup map — replaces O(n²) rankOf(t) called inside .map()
+const rankMap = useMemo(
+  () => Object.fromEntries(sorted.map((t, i) => [String(t.id), i])),
+  [sorted]
+);
 
   // Search from sorted so display order matches rank order
   const afterSearch = sorted.filter(t =>
@@ -663,7 +670,7 @@ export default function AdminTechnicianList() {
               background: C.border, border: `1px solid ${C.border}`,
             }}>
               {filtered.map(tech => {
-                const ri        = rankOf(tech);
+               const ri = rankMap[String(tech.id)] ?? -1;
                 const rankColor = ri <= 2 ? RANK_COLORS[ri] : null;
                 const typeStyle = tech.technicianType ? TYPE_STYLE[tech.technicianType] : null;
 
@@ -899,12 +906,11 @@ export default function AdminTechnicianList() {
                 letterSpacing: "0.06em", marginBottom: "6px",
               }}>{deleteTarget.technicianId}</div>
               <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5 }}>
-                This will permanently delete this account and all{" "}
-                <strong style={{ color: C.ink }}>
-                  {deleteTarget.totalEntries?.toLocaleString("en-IN") || 0} job card{" "}
-                  {deleteTarget.totalEntries === 1 ? "entry" : "entries"}
-                </strong>.
-              </div>
+  This will permanently delete this account and{" "}
+  <strong style={{ color: C.ink }}>
+    all their job card entries and attendance records
+  </strong>{" "}across all months. This cannot be undone.
+</div>
             </div>
 
             {deleteError && <div className="al-modal-error">{deleteError}</div>}
