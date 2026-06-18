@@ -638,7 +638,7 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
       <button className="td-incentive-toggle" onClick={toggleOpen}>
         <div>
           <div className="td-incentive-eyebrow">Monthly Incentive</div>
-          <div className="td-incentive-sub">Payout on the 2nd of every month</div>
+          <div className="td-incentive-sub">Payout on every month</div>
         </div>
         <div className={`td-chevron${open ? " open" : ""}`}>›</div>
       </button>
@@ -1066,17 +1066,20 @@ export default function TechnicianDashboard() {
   // not a plain array. That caused entries.filter() to throw TypeError immediately.
   // FIX Bug 2: was no pagination params — backend defaulted to page=1, limit=20.
   // Now requests limit=100 (max the backend allows) so all entries are loaded.
-  const fetchEntries = useCallback(async () => {
-    try {
-      const res = await api.get("/api/entries/my?limit=100");
-      setEntries(res.data.entries || []);
-      setEntriesTotal(res.data.total || 0);
-    } catch (err) {
-      console.error("Entries fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+const fetchEntries = useCallback(async () => {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1;
+  try {
+    const res = await api.get(`/api/entries/my?year=${year}&month=${month}`);
+    setEntries(res.data.entries || []);
+    setEntriesTotal(res.data.total || 0);
+  } catch (err) {
+    console.error("Entries fetch error:", err);
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   const fetchCurrentIncentive = useCallback(async () => {
     try {
@@ -1168,23 +1171,11 @@ export default function TechnicianDashboard() {
     }
   }, [editSaving, editingEntry, fetchCurrentIncentive]);
 
-  // ── Derived stats ─────────────────────────────────────────────────────────
-  const thisMonthEntries = useMemo(() =>
-    entries.filter((e) => {
-      const d = new Date(e.date);
-      return (
-        d.getFullYear() === NOW.getFullYear() &&
-        d.getMonth()    === NOW.getMonth()
-      );
-    }),
-    [entries]
-  );
 
-  const totalHours    = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.hoursWorked  || 0), 0), [thisMonthEntries]);
-  const totalLabour   = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.labourAmount || 0), 0), [thisMonthEntries]);
-  const totalLeave    = useMemo(() => thisMonthEntries.reduce((s, e) => s + (e.leaveDays    || 0), 0), [thisMonthEntries]);
-  const totalVehicles = useMemo(() => new Set(thisMonthEntries.map((e) => e.vehicleNo).filter(Boolean)).size, [thisMonthEntries]);
-
+ const totalHours    = useMemo(() => entries.reduce((s, e) => s + (e.hoursWorked  || 0), 0), [entries]);
+const totalLabour   = useMemo(() => entries.reduce((s, e) => s + (e.labourAmount || 0), 0), [entries]);
+const totalLeave    = useMemo(() => entries.reduce((s, e) => s + (e.leaveDays    || 0), 0), [entries]);
+const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size, [entries]);
   const incentiveDisplay = useMemo(() => {
     if (currentIncentive === null) return "—";
     if (currentIncentive === 0)    return "₹0";
@@ -1238,20 +1229,20 @@ export default function TechnicianDashboard() {
           {isGated && <div className="td-gate-overlay" />}
 
           {/* ── Stats grid ── */}
-          <div className="td-stat-grid td-a2">
-            <StatCard label="Entries"          value={thisMonthEntries.length} />
-            <StatCard label="Hours Worked"     value={totalHours}              unit="hrs" />
-            <StatCard label="Labour Earned"    value={fmtMoney(totalLabour)} />
-            <StatCard label="Leave Days"       value={totalLeave}              unit="days" />
-            <StatCard label="Vehicles Served"  value={totalVehicles}           unit="unique" />
-            <StatCard
-              label="Projected Incentive"
-              value={incentiveDisplay}
-              unit="this month"
-              accent={currentIncentive > 0 ? "#16A34A" : undefined}
-              accentCard={currentIncentive > 0}
-            />
-          </div>
+        <div className="td-stat-grid td-a2">
+  <StatCard label="Entries"         value={loading ? "—" : entries.length} />
+  <StatCard label="Hours Worked"    value={loading ? "—" : totalHours}     unit={loading ? "" : "hrs"} />
+  <StatCard label="Labour Earned"   value={loading ? "—" : fmtMoney(totalLabour)} />
+  <StatCard label="Leave Days"      value={loading ? "—" : totalLeave}     unit={loading ? "" : "days"} />
+  <StatCard label="Vehicles Served" value={loading ? "—" : totalVehicles}  unit={loading ? "" : "unique"} />
+  <StatCard
+    label="Projected Incentive"
+    value={incentiveDisplay}
+    unit="this month"
+    accent={currentIncentive > 0 ? "#16A34A" : undefined}
+    accentCard={currentIncentive > 0}
+  />
+</div>
 
           {/* ── Month context banner ── */}
           <div className="td-month-banner td-a2">
