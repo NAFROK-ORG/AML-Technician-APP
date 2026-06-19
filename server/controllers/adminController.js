@@ -451,10 +451,27 @@ const exportTechnicianData = async (req, res) => {
 // GET /api/admin/analytics
 //
 // CACHED: the heaviest read in the system — 5 aggregations running in
-// parallel, including a $lookup. 30s TTL collapses repeated/concurrent loads
-// for the same branch+date-range filter combination. Date validation runs
-// BEFORE the cache wrapper so an invalid 'from'/'to' still returns 400
-// immediately and is never cached.
+// parallel, including a $lookup. Cache collapses repeated/concurrent loads
+// for the same branch+date-range filter combination.
+//
+// TTL is now adaptive:
+//   - Current/live queries (no 'to', or 'to' is today or future): 30s
+//     These need to reflect new job card entries as they come in.
+//   - Historical queries ('to' is strictly before today): 300s (5 min)
+//     Past data is frozen. Re-running 5 aggregations every 30s on a
+//     Q1 date range at quarter-end is wasted M0 compute. A 5-minute
+//     cache means the first hit pays the cost; everything after is instant.
+//
+// Cache key is now explicit and deterministic — no JSON.stringify on a
+// matchStage object (opaque, hard to debug, fragile if construction order
+// ever changes). Key components:
+//   branch   — "all" for superadmin with no filter, actual branch otherwise
+//   from/to  — raw query strings (empty string when absent)
+// Any change to inputs produces a different key. Same inputs always produce
+// the same key. Branches/date-ranges never collide with each other.
+//
+// Date validation still runs BEFORE the cache wrapper — an invalid date
+// returns 400 immediately and is never cached.
 // ─────────────────────────────────────────────────────────────────────────────
 const getAnalytics = async (req, res) => {
   try {
@@ -481,9 +498,31 @@ const getAnalytics = async (req, res) => {
       }
     }
 
-    const cacheKey = `analytics:${JSON.stringify(matchStage)}:${isBranchAdmin(req) ? req.user.branch : "all"}`;
+    // ── Deterministic cache key ────────────────────────────────────────────
+    // Uses the resolved branch string and the raw query params directly.
+    // "all" when superadmin has no branch filter applied.
+    // Empty string ("") when from/to are absent — still produces a unique,
+    // consistent key that distinguishes "no date filter" from "any date filter".
+    const resolvedBranch = branch || "all";
+    const cacheKey = `analytics:${resolvedBranch}:${from || ""}:${to || ""}`;
 
-    const payload = await getOrSet(cacheKey, 30, async () => {
+    // ── Adaptive TTL ───────────────────────────────────────────────────────
+    // Historical = 'to' date is strictly before the start of today (UTC).
+    // If 'to' is absent, the query spans up to "now" and is treated as live.
+    // If 'to' is today or in the future, treat as live (30s).
+    //
+    // todayUTCMidnight: start of today in UTC — safe cross-timezone boundary.
+    const todayUTCMidnight = new Date();
+    todayUTCMidnight.setUTCHours(0, 0, 0, 0);
+
+    const isHistorical = Boolean(to) &&
+      new Date(to + "T23:59:59.999Z") < todayUTCMidnight;
+
+    const ttlSeconds = isHistorical ? 300 : 30;
+    // 300s for past quarter/month reports — data is frozen, no need to re-run
+    //  30s for live/current views — reflects entries as they come in
+
+    const payload = await getOrSet(cacheKey, ttlSeconds, async () => {
       const [overviewArr, byBranch, byCategory, byMonth, topTechs] =
         await Promise.all([
 
