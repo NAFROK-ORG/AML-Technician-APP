@@ -1,0 +1,202 @@
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+  @keyframes alFadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .al-a1 { animation: alFadeUp 0.28s ease both 0.00s; }
+  .al-a2 { animation: alFadeUp 0.28s ease both 0.06s; }
+  .al-a3 { animation: alFadeUp 0.28s ease both 0.10s; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .al-tech-card {
+    background: #FFFFFF;
+    border: 1px solid #DDE3EE;
+    border-left: 3px solid transparent;
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .al-tech-card:hover {
+    border-left-color: #1E3A8A;
+    box-shadow: 0 2px 8px rgba(30,58,138,0.08);
+  }
+
+  .al-search-wrap { position: relative; margin-bottom: 12px; }
+  .al-search-icon {
+    position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 15px; color: #94A3B8; pointer-events: none;
+  }
+  .al-search-input {
+    width: 100%; box-sizing: border-box;
+    background: #FFFFFF; border: 1px solid #DDE3EE; border-radius: 0;
+    color: #0A1628; font-size: 14px;
+    padding: 12px 40px 12px 38px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    outline: none; height: 48px;
+    transition: border-color 0.15s;
+  }
+  .al-search-input:focus { border-color: #1E3A8A; border-width: 1.5px; }
+  .al-search-clear {
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none; color: #94A3B8;
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .al-filter-strip {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding-bottom: 4px; margin-bottom: 20px;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .al-filter-strip::-webkit-scrollbar { display: none; }
+
+  .al-filter-pill {
+    flex-shrink: 0; padding: 5px 10px;
+    border: 1.5px solid #DDE3EE; background: #F8FAFC;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #6B7A99; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent; white-space: nowrap;
+  }
+  .al-filter-pill:hover { border-color: #1E3A8A; color: #1E3A8A; }
+  .al-filter-pill.active { background: #1E3A8A; border-color: #1E3A8A; color: #FFFFFF; }
+  .al-filter-pill.pending-pill { border-color: #FDE68A; color: #D97706; background: #FEF3C7; }
+  .al-filter-pill.pending-pill.active { background: #D97706; border-color: #D97706; color: #FFFFFF; }
+
+  /* ── Sort pills ── */
+  .al-sort-strip {
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: nowrap; overflow-x: auto;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .al-sort-strip::-webkit-scrollbar { display: none; }
+
+  .al-sort-pill {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 11px;
+    border: 1.5px solid #DDE3EE; background: #F8FAFC;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #6B7A99; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent; white-space: nowrap;
+  }
+  .al-sort-pill:hover { border-color: #1E3A8A; color: #1E3A8A; background: #EEF2F7; }
+  .al-sort-pill.active-labour  { background: #FFFBEB; border-color: #D97706; color: #D97706; }
+  .al-sort-pill.active-hours   { background: #F0FDF4; border-color: #16A34A; color: #16A34A; }
+  .al-sort-pill.active-entries { background: #EEF2F7; border-color: #1E3A8A; color: #1E3A8A; }
+
+  .al-sort-arrow {
+    font-size: 10px; line-height: 1;
+    display: inline-block; transform: scaleY(0.9);
+  }
+
+  .al-back-btn {
+    background: transparent; border: none; color: #94A3B8;
+    font-size: 10px; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 6px;
+    transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .al-back-btn:hover { color: #1E3A8A; }
+
+  .al-action-btn {
+    padding: 5px 9px;
+    border: 1px solid #DDE3EE; background: #F8FAFC;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; color: #6B7A99;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent; white-space: nowrap;
+  }
+  .al-action-btn.edit:hover  { border-color: #1E3A8A; color: #1E3A8A; background: #EEF2F7; }
+  .al-action-btn.del:hover   { border-color: #DC2626; color: #DC2626; background: #FEF2F2; }
+
+  .al-modal-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(10, 22, 40, 0.82);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .al-modal-card {
+    width: 100%; max-width: 420px;
+    background: #FFFFFF; border: 1px solid #DDE3EE;
+    padding: 28px 24px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    animation: alFadeUp 0.25s ease both;
+    max-height: 92dvh; overflow-y: auto;
+  }
+  .al-modal-header {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 24px; padding-bottom: 20px;
+    border-bottom: 1px solid #EEF2F7;
+  }
+  .al-modal-icon {
+    width: 42px; height: 42px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .al-modal-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 21px; font-weight: 700; color: #0A1628;
+    letter-spacing: 0.02em; text-transform: uppercase;
+    line-height: 1.1; margin-bottom: 3px;
+  }
+  .al-modal-subtitle { font-size: 11px; color: #6B7A99; font-weight: 400; }
+  .al-modal-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .al-modal-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; color: #6B7A99;
+  }
+  .al-modal-input {
+    width: 100%; height: 46px; padding: 0 14px;
+    background: #F8FAFC; border: 1.5px solid #DDE3EE;
+    color: #0A1628; font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px; font-weight: 500; outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    border-radius: 0; box-sizing: border-box; -webkit-appearance: none;
+  }
+  .al-modal-input:focus { border-color: #1E3A8A; background: #FFFFFF; }
+  .al-modal-error {
+    background: #FEF2F2; border: 1px solid #FECACA;
+    border-left: 3px solid #DC2626;
+    padding: 10px 12px; font-size: 12px; font-weight: 500;
+    color: #991B1B; margin-bottom: 14px;
+    font-family: 'IBM Plex Sans', sans-serif; line-height: 1.5;
+  }
+  .al-modal-btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .al-modal-btn {
+    flex: 1; height: 48px; border: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; cursor: pointer;
+    border-radius: 0; transition: background 0.15s, opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .al-modal-btn.primary { background: #1E3A8A; color: #FFFFFF; }
+  .al-modal-btn.primary:hover:not(:disabled) { background: #1E40AF; }
+  .al-modal-btn.cancel  { background: #F8FAFC; color: #6B7A99; border: 1px solid #DDE3EE; }
+  .al-modal-btn.cancel:hover { background: #EEF2F7; }
+  .al-modal-btn.danger  { background: #DC2626; color: #FFFFFF; }
+  .al-modal-btn.danger:hover:not(:disabled) { background: #B91C1C; }
+  .al-modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  @media (max-width: 480px) {
+    .al-tech-stats { grid-template-columns: repeat(2, 1fr) !important; }
+    .al-sort-strip { gap: 5px; }
+    .al-sort-pill  { padding: 5px 9px; font-size: 8.5px; }
+  }
