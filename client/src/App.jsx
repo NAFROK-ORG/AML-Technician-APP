@@ -14,6 +14,7 @@ import AdminAttendance from "./pages/AdminAttendance";
 import VehicleSearch from "./pages/VehicleSearch";
 import SecurityDashboard from "./pages/SecurityDashboard";   // ← NEW
 import VehicleLogBoard from "./pages/VehicleLogBoard";       // ← NEW
+import VehicleAnalytics from "./pages/VehicleAnalytics";     // ← NEW (Task 2)
 import AuditLog from "./pages/AuditLog";
 /**
  * GuestRoute — blocks /login and /signup for already-authenticated users.
@@ -126,11 +127,19 @@ export default function App() {
           Branch admin: server forces their branch. Superadmin: optional branch filter.
           role is an array — both roles see this page.
         */}
-        <Route
+   <Route
           path="/admin/vehicle-log"
           element={
             <ProtectedRoute role={["admin", "superadmin"]}>
               <VehicleLogBoard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/vehicle-analytics"
+          element={
+            <ProtectedRoute role={["admin", "superadmin"]}>
+              <VehicleAnalytics />
             </ProtectedRoute>
           }
         />
