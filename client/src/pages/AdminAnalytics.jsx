@@ -6,14 +6,11 @@ import {
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import { useAuthStore } from "../store/authStore";
-// FIX Bug 7: Import BRANCHES from the single source of truth.
-// Previously this file defined its own local BRANCHES constant, which could
-// silently drift out of sync with constants.js whenever a branch was added.
-// Now AdminAnalytics + AdminAttendance + any future page all share one definition.
 import { BRANCHES } from "../utils/constants";
 
 /* ─── Corporate light tokens ─────────────────────────────────────── */
 const C = {
+
   pageBg:  "#EEF2F7",
   card:    "#FFFFFF",
   cardAlt: "#F8FAFC",
@@ -28,11 +25,35 @@ const C = {
   success: "#16A34A",
   danger:  "#DC2626",
   amber:   "#D97706",
+  
 };
 
-/* ─── Constants ──────────────────────────────────────────────────── */
-// BRANCHES is now imported from ../utils/constants — removed local definition
+/* ─── Month presets — computed once at module load ───────────────── */
+// Generates: "This Month" + 6 previous months
+const MONTH_PRESETS = (() => {
+  const now = new Date();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y   = d.getFullYear();
+    const m   = d.getMonth(); // 0-indexed
+    const mm  = String(m + 1).padStart(2, "0");
+    const from = `${y}-${mm}-01`;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const to = i === 0
+      ? `${String(now.getFullYear())}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+      : `${y}-${mm}-${String(lastDay).padStart(2, "0")}`;
+    return {
+      label: i === 0
+        ? "This Month"
+        : d.toLocaleString("en-IN", { month: "long", year: "numeric" }),
+      key: `${y}-${mm}`,
+      from,
+      to,
+    };
+  });
+})();
 
+/* ─── Constants ──────────────────────────────────────────────────── */
 const CATEGORY_COLORS = {
   "ENGINE REPAIR":    "#2563EB",
   "GEAR BOX":         "#DC2626",
@@ -91,6 +112,7 @@ const INJECTED = `
     -webkit-appearance: none;
     transition: border-color 0.15s, background 0.15s;
     box-sizing: border-box;
+    width: 100%;
   }
   .aa-filter-input:focus { border-color: #1E3A8A; background: #FFFFFF; }
 
@@ -114,6 +136,7 @@ const INJECTED = `
     background-color: #F8FAFC;
     transition: border-color 0.15s;
     box-sizing: border-box;
+    width: 100%;
   }
   .aa-filter-select:focus { border-color: #1E3A8A; background-color: #FFFFFF; }
 
@@ -155,6 +178,7 @@ const INJECTED = `
     white-space: nowrap;
     flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
   }
   .aa-clear-btn:hover { background: #FEF2F2; border-color: #DC2626; }
 
@@ -220,6 +244,46 @@ const INJECTED = `
     flex-wrap: wrap;
   }
 
+  /* ── Filter bar layout ── */
+  .aa-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+  }
+  .aa-filter-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 140px;
+  }
+  .aa-filter-dates {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .aa-filter-date-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 140px;
+  }
+  .aa-filter-status {
+    margin-left: auto;
+    align-self: flex-end;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #94A3B8;
+    letter-spacing: 0.04em;
+    padding-bottom: 2px;
+    white-space: nowrap;
+  }
+
+  /* ── Chart height wrappers ── */
+  .aa-chart-h260 { height: 260px; }
+  .aa-chart-h240 { height: 240px; }
+.aa-chart-h170 { height: 170px; }
+  .aa-chart-h120 { height: 120px; }
+
   /* ── Table ── */
   .aa-table { width: 100%; border-collapse: collapse; }
   .aa-table th {
@@ -253,17 +317,45 @@ const INJECTED = `
     background: #F8FAFC;
   }
 
-  /* ── Responsive ── */
+  /* ── Responsive — tablet ── */
   @media (max-width: 960px) {
     .aa-row-2col  { grid-template-columns: 1fr !important; }
     .aa-row-equal { grid-template-columns: 1fr !important; }
   }
+
+  /* ── Responsive — mobile ── */
   @media (max-width: 640px) {
     .aa-kpi-grid { grid-template-columns: 1fr 1fr !important; }
-  }
-  @media (max-width: 420px) {
-    .aa-kpi-grid { grid-template-columns: 1fr !important; }
+
+    /* Charts shorter on mobile */
+  .aa-chart-h260 { height: 200px; }
+    .aa-chart-h240 { height: 185px; }
+    .aa-chart-h170 { height: 145px; }
+    .aa-chart-h120 { height: 100px; }
+
+    /* Filter bar: stack fully */
+    .aa-filter-bar { flex-direction: column; gap: 12px; }
+    .aa-filter-field { width: 100%; min-width: unset; }
+    .aa-filter-dates { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .aa-filter-date-field { min-width: unset; }
+    .aa-filter-status { margin-left: 0; width: 100%; text-align: left; padding-bottom: 0; }
+
+    /* Page header */
+    .aa-page-header { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
+    .aa-export-btn { width: 100%; text-align: center; }
+    .aa-page-title { font-size: 26px !important; }
+
+    /* Metric pills */
     .aa-metric-pill { font-size: 8px; padding: 4px 8px; }
+  }
+
+@media (max-width: 420px) {
+    .aa-kpi-grid { grid-template-columns: 1fr 1fr !important; }
+    .aa-filter-dates { grid-template-columns: 1fr; }
+  .aa-chart-h260 { height: 175px; }
+    .aa-chart-h240 { height: 165px; }
+    .aa-chart-h170 { height: 130px; }
+    .aa-chart-h120 { height: 85px; }
   }
 `;
 
@@ -284,7 +376,10 @@ const LightTooltip = ({ active, payload, label }) => {
         textTransform: "uppercase", color: C.muted, marginBottom: "6px", margin: "0 0 6px",
       }}>{label}</p>
       {payload.map((p, i) => (
-        <p key={i} style={{ fontSize: "12px", color: C.mid, margin: "3px 0", display: "flex", alignItems: "center", gap: "6px" }}>
+        <p key={i} style={{
+          fontSize: "12px", color: C.mid, margin: "3px 0",
+          display: "flex", alignItems: "center", gap: "6px",
+        }}>
           <span style={{
             display: "inline-block", width: "8px", height: "8px",
             background: p.color, flexShrink: 0,
@@ -361,12 +456,25 @@ const ChartCard = ({ title, children, action, className = "", style = {} }) => (
 );
 
 /* ─── Filter field label ─────────────────────────────────────────── */
-const FLabel = ({ text }) => (
+const FLabel = ({ text, secondary }) => (
   <div style={{
     fontSize: "9px", fontWeight: "700", letterSpacing: "0.16em",
-    textTransform: "uppercase", color: C.mid, marginBottom: "6px",
+    textTransform: "uppercase",
+    color: secondary ? C.dim : C.mid,
+    marginBottom: "6px",
     fontFamily: "'IBM Plex Sans', sans-serif",
-  }}>{text}</div>
+    display: "flex", alignItems: "center", gap: "6px",
+  }}>
+    {text}
+    {secondary && (
+      <span style={{
+        fontSize: "8px", letterSpacing: "0.1em",
+        color: C.dim, fontWeight: "600",
+        background: C.cardAlt, border: `1px solid ${C.border}`,
+        padding: "1px 5px", lineHeight: 1.4,
+      }}>OVERRIDE</span>
+    )}
+  </div>
 );
 
 /* ─── Empty state ────────────────────────────────────────────────── */
@@ -387,12 +495,14 @@ export default function AdminAnalytics() {
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
+  // ── Default to current month ──
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [branch,       setBranch]       = useState("");
-  const [from,         setFrom]         = useState("");
-  const [to,           setTo]           = useState("");
+  const [monthPreset,  setMonthPreset]  = useState(MONTH_PRESETS[0].key);
+  const [from,         setFrom]         = useState(MONTH_PRESETS[0].from);
+  const [to,           setTo]           = useState(MONTH_PRESETS[0].to);
   const [branchMetric, setBranchMetric] = useState("totalLabour");
 
   /* inject styles */
@@ -404,6 +514,26 @@ export default function AdminAnalytics() {
       document.head.appendChild(el);
     }
     return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
+  }, []);
+
+  /* ── Month preset handler: updates from/to automatically ── */
+  const handleMonthPreset = useCallback((key) => {
+    const preset = MONTH_PRESETS.find(p => p.key === key);
+    if (!preset) return;
+    setMonthPreset(key);
+    setFrom(preset.from);
+    setTo(preset.to);
+  }, []);
+
+  /* ── Manual date change: overrides preset → "custom" ── */
+  const handleFromChange = useCallback((val) => {
+    setFrom(val);
+    setMonthPreset("custom");
+  }, []);
+
+  const handleToChange = useCallback((val) => {
+    setTo(val);
+    setMonthPreset("custom");
   }, []);
 
   const fetchAnalytics = useCallback(async () => {
@@ -424,41 +554,103 @@ export default function AdminAnalytics() {
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  /* ── CSV export ── */
+  /* ── CSV export — improved with metadata + sections ── */
   const exportCSV = () => {
     if (!data) return;
-    const rows = [["Section","Dimension","Labour (₹)","Hours","Entries","Incentives (₹)","Leave Days"]];
-    data.byBranch.forEach(b   => rows.push(["Branch",       b._id,                              b.totalLabour,  b.totalHours,  b.totalEntries, b.totalIncentives, b.totalLeaveDays]));
-    data.byCategory.forEach(c => rows.push(["Category",     c._id,                              c.totalLabour,  c.totalHours,  c.count,        "",                ""]));
-    data.byMonth.forEach(m    => rows.push(["Monthly Trend", m.label,                           m.totalLabour,  m.totalHours,  m.totalEntries, m.totalIncentives, ""]));
-    data.topTechs.forEach(t   => rows.push(["Top Technicians", `${t.name} (${t.technicianId})`, t.totalLabour,  t.totalHours,  t.totalEntries, "",                ""]));
-    const csv   = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob  = new Blob([csv], { type: "text/csv" });
-    const url   = URL.createObjectURL(blob);
-    const scope = data.scopedBranch || (isSuperAdmin && branch ? `_${branch}` : "_all_branches");
-    const sfx   = typeof scope === "string" && scope.startsWith("_") ? scope : `_${scope}`;
-    const a     = Object.assign(document.createElement("a"), {
-      href: url, download: `AL_Analytics${sfx}_${new Date().toISOString().slice(0, 10)}.csv`,
+    const o = data.overview;
+    const branchLabel = data.scopedBranch || (isSuperAdmin && branch ? branch : "All Branches");
+    const periodPreset = MONTH_PRESETS.find(p => p.key === monthPreset);
+    const periodLabel = periodPreset ? periodPreset.label : "Custom Range";
+    const dateRange   = `${from || "—"} to ${to || "—"}`;
+    const generated   = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+
+    const rows = [
+      // ── Metadata header
+      ["AML Motors — Performance Analytics Export"],
+      ["Branch", branchLabel, "Period", periodLabel, "Date Range", dateRange],
+      ["Generated", generated],
+      [""],
+      // ── Overview
+      ["OVERVIEW TOTALS"],
+      ["Metric", "Value"],
+      ["Total Labour (₹)",    o.totalLabour],
+      ["Total Hours",         o.totalHours],
+      ["Total Incentives (₹)",o.totalIncentives],
+      ["Total Entries",       o.totalEntries],
+      ["Total Leave Days",    o.totalLeaveDays],
+      ["Avg Labour / Entry (₹)", o.totalEntries > 0 ? Math.round(o.totalLabour / o.totalEntries) : 0],
+      [""],
+      // ── Branch
+      ["BRANCH PERFORMANCE"],
+      ["Branch", "Labour (₹)", "Hours", "Entries", "Incentives (₹)", "Leave Days"],
+      ...data.byBranch.map(b => [
+        b._id, b.totalLabour, b.totalHours, b.totalEntries, b.totalIncentives, b.totalLeaveDays,
+      ]),
+      [""],
+      // ── Category
+      ["CATEGORY BREAKDOWN"],
+      ["Category", "Entries", "Hours", "Labour (₹)", "Avg Labour / Entry (₹)"],
+      ...data.byCategory.map(c => [
+        c._id, c.count, c.totalHours, c.totalLabour,
+        c.count > 0 ? Math.round(c.totalLabour / c.count) : 0,
+      ]),
+      [""],
+      // ── Monthly trend
+      ["MONTHLY TREND"],
+      ["Month", "Labour (₹)", "Hours", "Entries", "Incentives (₹)"],
+      ...data.byMonth.map(m => [
+        m.label, m.totalLabour, m.totalHours, m.totalEntries, m.totalIncentives,
+      ]),
+      [""],
+      // ── Top technicians
+      ["TOP TECHNICIANS — LABOUR"],
+      ["Rank", "Name", "Technician ID", "Branch", "Labour (₹)", "Hours", "Entries"],
+      ...data.topTechs.map((t, i) => [
+        i + 1, t.name, t.technicianId, t.branch, t.totalLabour, t.totalHours, t.totalEntries,
+      ]),
+    ];
+
+    const csv  = rows.map(r => r.map(v => `"${v ?? ""}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const safePeriod  = periodLabel.replace(/\s+/g, "_").replace(/[^A-Za-z0-9_-]/g, "");
+    const safeBranch  = branchLabel.replace(/\s+/g, "_").replace(/[^A-Za-z0-9_-]/g, "");
+    const dateStamp   = new Date().toISOString().slice(0, 10);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `AML_Analytics_${safeBranch}_${safePeriod}_${dateStamp}.csv`,
     });
-    a.click(); URL.revokeObjectURL(url);
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const hasActiveFilter = (isSuperAdmin && !!branch) || !!from || !!to;
-  const clearFilters    = () => { if (isSuperAdmin) setBranch(""); setFrom(""); setTo(""); };
+  // ── Filter helpers ──
+  const isCurrentMonth  = monthPreset === MONTH_PRESETS[0].key;
+  const hasActiveFilter = (isSuperAdmin && !!branch) || !isCurrentMonth;
+
+  const clearFilters = () => {
+    if (isSuperAdmin) setBranch("");
+    setMonthPreset(MONTH_PRESETS[0].key);
+    setFrom(MONTH_PRESETS[0].from);
+    setTo(MONTH_PRESETS[0].to);
+  };
 
   const filterStatusText = () => {
+    const periodPreset = MONTH_PRESETS.find(p => p.key === monthPreset);
+    const periodLabel  = periodPreset ? periodPreset.label : `${from} → ${to}`;
     if (isBranchAdmin) {
       const b = data?.scopedBranch || user?.branch || "";
-      return `Branch: ${b}${(from || to) ? ` · ${from || "start"} → ${to || "now"}` : ""}`;
+      return `${b} · ${periodLabel}`;
     }
-    return `${branch ? `Filtered: ${branch}` : "All branches"}${(from || to) ? ` · ${from || "start"} → ${to || "now"}` : ""}`;
+    return `${branch ? branch : "All branches"} · ${periodLabel}`;
   };
 
   const branchMetricLabel = {
-    totalLabour:     "Labour",
-    totalHours:      "Hours",
-    totalEntries:    "Entries",
-    totalIncentives: "Incentives",
+    totalLabour:         "Labour",
+    totalHours:          "Hours",
+    totalEntries:        "Entries",
+    totalIncentives:     "Incentives",
+    totalVehiclesLogged: "Vehicles",
   };
 
   const o = data?.overview;
@@ -476,25 +668,31 @@ export default function AdminAnalytics() {
       <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 16px 80px" }}>
 
         {/* ── Page header ── */}
-        <div className="aa-a1" style={{
-          display: "flex", alignItems: "flex-start",
-          justifyContent: "space-between", flexWrap: "wrap",
-          gap: "16px", marginBottom: "28px",
-          paddingBottom: "24px", borderBottom: `1px solid ${C.border}`,
-        }}>
-          <div>
+        <div
+          className="aa-a1 aa-page-header"
+          style={{
+            display: "flex", alignItems: "flex-start",
+            justifyContent: "space-between", flexWrap: "wrap",
+            gap: "16px", marginBottom: "28px",
+            paddingBottom: "24px", borderBottom: `1px solid ${C.border}`,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontSize: "9px", fontWeight: "700", letterSpacing: "0.22em",
               textTransform: "uppercase", color: C.navy, marginBottom: "6px",
             }}>
               {isSuperAdmin ? "Super Admin" : "Branch Admin"} · Analytics
             </div>
-            <h1 style={{
-              fontFamily: "'Barlow Condensed', sans-serif",
-              fontSize: "36px", fontWeight: "700", color: C.ink,
-              letterSpacing: "0.04em", textTransform: "uppercase",
-              margin: "0 0 6px", lineHeight: 1,
-            }}>
+            <h1
+              className="aa-page-title"
+              style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: "36px", fontWeight: "700", color: C.ink,
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                margin: "0 0 6px", lineHeight: 1,
+              }}
+            >
               {isBranchAdmin ? `${user?.branch || ""} Analytics` : "Performance Analytics"}
             </h1>
             <p style={{
@@ -512,100 +710,111 @@ export default function AdminAnalytics() {
         </div>
 
         {/* ── Filter bar ── */}
-        <div className="aa-a2" style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderLeft: `3px solid ${C.navy}`,
-          padding: "20px 24px",
-          marginBottom: "28px",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "16px",
-          alignItems: "flex-end",
-        }}>
+        <div
+          className="aa-a2"
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${C.navy}`,
+            padding: "20px 24px",
+            marginBottom: "28px",
+          }}
+        >
+          <div className="aa-filter-bar">
 
-          {/* Branch selector — superadmin only */}
-          {isSuperAdmin && (
-            <div style={{ display: "flex", flexDirection: "column", minWidth: "160px" }}>
-              <FLabel text="Branch" />
+            {/* Branch selector — superadmin only */}
+            {isSuperAdmin && (
+              <div className="aa-filter-field">
+                <FLabel text="Branch" />
+                <select
+                  className="aa-filter-select"
+                  value={branch}
+                  onChange={e => setBranch(e.target.value)}
+                >
+                  <option value="">All Branches</option>
+                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* Locked branch badge — branch admin */}
+            {isBranchAdmin && (
+              <div className="aa-filter-field" style={{ minWidth: "unset" }}>
+                <FLabel text="Branch" />
+                <div style={{
+                  height: "40px",
+                  display: "inline-flex", alignItems: "center", gap: "8px",
+                  background: C.cardAlt, border: `1px solid ${C.border}`,
+                  borderLeft: `3px solid ${C.navy}`,
+                  padding: "0 16px",
+                }}>
+                  <div style={{
+                    width: "6px", height: "6px", borderRadius: "50%",
+                    background: C.navy, flexShrink: 0,
+                  }} />
+                  <span style={{
+                    fontSize: "11px", fontWeight: "700", letterSpacing: "0.12em",
+                    textTransform: "uppercase", color: C.navy,
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                  }}>{user?.branch || "—"}</span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Month preset selector (primary time control) ── */}
+            <div className="aa-filter-field" style={{ minWidth: "160px" }}>
+              <FLabel text="Period" />
               <select
                 className="aa-filter-select"
-                value={branch}
-                onChange={e => setBranch(e.target.value)}
-                style={{ width: "100%" }}
+                value={monthPreset}
+                onChange={e => handleMonthPreset(e.target.value)}
               >
-                <option value="">All Branches</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                {MONTH_PRESETS.map(p => (
+                  <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+                {monthPreset === "custom" && (
+                  <option value="custom">Custom Range</option>
+                )}
               </select>
             </div>
-          )}
 
-          {/* Locked branch badge — branch admin */}
-          {isBranchAdmin && (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <FLabel text="Branch" />
-              <div style={{
-                height: "40px",
-                display: "inline-flex", alignItems: "center", gap: "8px",
-                background: C.cardAlt, border: `1px solid ${C.border}`,
-                borderLeft: `3px solid ${C.navy}`,
-                padding: "0 16px",
-              }}>
-                <div style={{
-                  width: "6px", height: "6px", borderRadius: "50%",
-                  background: C.navy, flexShrink: 0,
-                }} />
-                <span style={{
-                  fontSize: "11px", fontWeight: "700", letterSpacing: "0.12em",
-                  textTransform: "uppercase", color: C.navy,
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}>{user?.branch || "—"}</span>
+            {/* ── From / To date overrides (secondary) ── */}
+            <div className="aa-filter-dates">
+              <div className="aa-filter-date-field">
+                <FLabel text="From" secondary />
+                <input
+                  type="date"
+                  className="aa-filter-input"
+                  value={from}
+                  onChange={e => handleFromChange(e.target.value)}
+                  style={{ colorScheme: "light" }}
+                />
+              </div>
+              <div className="aa-filter-date-field">
+                <FLabel text="To" secondary />
+                <input
+                  type="date"
+                  className="aa-filter-input"
+                  value={to}
+                  onChange={e => handleToChange(e.target.value)}
+                  style={{ colorScheme: "light" }}
+                />
               </div>
             </div>
-          )}
 
-          {/* Date — From */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <FLabel text="From" />
-            <input
-              type="date"
-              className="aa-filter-input"
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              style={{ colorScheme: "light", width: "150px" }}
-            />
+            {/* Clear — only when non-default filter active */}
+            {hasActiveFilter && (
+              <button className="aa-clear-btn" onClick={clearFilters}
+                style={{ alignSelf: "flex-end" }}>
+                Clear
+              </button>
+            )}
+
+            {/* Filter status — right-aligned */}
+            {!loading && (
+              <div className="aa-filter-status">{filterStatusText()}</div>
+            )}
           </div>
-
-          {/* Date — To */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <FLabel text="To" />
-            <input
-              type="date"
-              className="aa-filter-input"
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              style={{ colorScheme: "light", width: "150px" }}
-            />
-          </div>
-
-          {/* Clear */}
-          {hasActiveFilter && (
-            <button className="aa-clear-btn" onClick={clearFilters}>
-              Clear
-            </button>
-          )}
-
-          {/* Filter status — right-aligned */}
-          {!loading && (
-            <div style={{
-              marginLeft: "auto", alignSelf: "flex-end",
-              fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "11px", color: C.dim, letterSpacing: "0.04em",
-              paddingBottom: "2px",
-            }}>
-              {filterStatusText()}
-            </div>
-          )}
         </div>
 
         {/* ── Loading ── */}
@@ -677,6 +886,12 @@ export default function AdminAnalytics() {
                 sub="across technicians"
                 accent={C.muted}
               />
+          <KpiCard
+                label="Vehicles Logged"
+                value={(o.totalVehiclesLogged || 0).toLocaleString("en-IN")}
+                sub="gate entries"
+                accent="#0E7490"
+              />
               {o.totalEntries > 0 && (
                 <KpiCard
                   label="Avg Labour / Entry"
@@ -706,24 +921,27 @@ export default function AdminAnalytics() {
                 }
               >
                 {data.byBranch.length === 0 ? <NoData /> : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid {...CHART_GRID} />
-                      <XAxis dataKey="_id" tick={AXIS_TICK} />
-                      <YAxis
-                        tick={AXIS_TICK}
-                        tickFormatter={v =>
-                          branchMetric.includes("Labour") || branchMetric.includes("Incentive")
-                            ? fmt(v) : v.toLocaleString("en-IN")}
-                      />
-                      <Tooltip content={<LightTooltip />} />
-                      <Bar dataKey={branchMetric} name={branchMetricLabel[branchMetric]} radius={[0, 0, 0, 0]}>
-                        {data.byBranch.map((_, i) => (
-                          <Cell key={i} fill={BRANCH_COLORS[i % BRANCH_COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="aa-chart-h260">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid {...CHART_GRID} />
+                        <XAxis dataKey="_id" tick={AXIS_TICK} />
+                        <YAxis
+                          tick={AXIS_TICK}
+                          tickFormatter={v =>
+                            branchMetric.includes("Labour") || branchMetric.includes("Incentive")
+                              ? fmt(v) : v.toLocaleString("en-IN")}
+                          width={55}
+                        />
+                        <Tooltip content={<LightTooltip />} />
+                        <Bar dataKey={branchMetric} name={branchMetricLabel[branchMetric]} radius={[0,0,0,0]}>
+                          {data.byBranch.map((_, i) => (
+                            <Cell key={i} fill={BRANCH_COLORS[i % BRANCH_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
               </ChartCard>
 
@@ -731,23 +949,25 @@ export default function AdminAnalytics() {
               <ChartCard title="Labour by Category">
                 {data.byCategory.length === 0 ? <NoData /> : (
                   <>
-                    <ResponsiveContainer width="100%" height={170}>
-                      <PieChart>
-                        <Pie
-                          data={data.byCategory}
-                          dataKey="totalLabour"
-                          nameKey="_id"
-                          cx="50%" cy="50%"
-                          innerRadius={48} outerRadius={78}
-                          paddingAngle={2} stroke="none"
-                        >
-                          {data.byCategory.map((c, i) => (
-                            <Cell key={i} fill={CATEGORY_COLORS[c._id] || BRANCH_COLORS[i]} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<LightTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="aa-chart-h170">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data.byCategory}
+                            dataKey="totalLabour"
+                            nameKey="_id"
+                            cx="50%" cy="50%"
+                            innerRadius={48} outerRadius={78}
+                            paddingAngle={2} stroke="none"
+                          >
+                            {data.byCategory.map((c, i) => (
+                              <Cell key={i} fill={CATEGORY_COLORS[c._id] || BRANCH_COLORS[i]} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<LightTooltip />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
 
                     {/* Legend with progress bars */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
@@ -791,31 +1011,65 @@ export default function AdminAnalytics() {
               style={{ marginBottom: "20px" }}
             >
               {data.byMonth.length === 0 ? <NoData /> : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={data.byMonth} margin={{ top: 4, right: 24, left: 0, bottom: 0 }}>
-                    <CartesianGrid {...CHART_GRID} />
-                    <XAxis dataKey="label" tick={AXIS_TICK} />
-                    <YAxis yAxisId="left"  tick={AXIS_TICK} tickFormatter={v => fmt(v)} />
-                    <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} />
-                    <Tooltip content={<LightTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
-                    <Line
-                      yAxisId="left" type="monotone" dataKey="totalLabour" name="Labour (₹)"
-                      stroke={C.navy} strokeWidth={2.5}
-                      dot={{ r: 4, fill: C.navy, strokeWidth: 0 }} activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      yAxisId="right" type="monotone" dataKey="totalHours" name="Hours Worked"
-                      stroke={C.success} strokeWidth={2.5}
-                      dot={{ r: 4, fill: C.success, strokeWidth: 0 }} activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      yAxisId="left" type="monotone" dataKey="totalIncentives" name="Incentives (₹)"
-                      stroke={C.amber} strokeWidth={2} strokeDasharray="5 4"
-                      dot={{ r: 3, fill: C.amber, strokeWidth: 0 }} activeDot={{ r: 5 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <div className="aa-chart-h240">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data.byMonth} margin={{ top: 4, right: 24, left: 0, bottom: 0 }}>
+                      <CartesianGrid {...CHART_GRID} />
+                      <XAxis dataKey="label" tick={AXIS_TICK} />
+                      <YAxis yAxisId="left"  tick={AXIS_TICK} tickFormatter={v => fmt(v)} width={55} />
+                      <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} />
+                      <Tooltip content={<LightTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                      <Line
+                        yAxisId="left" type="monotone" dataKey="totalLabour" name="Labour (₹)"
+                        stroke={C.navy} strokeWidth={2.5}
+                        dot={{ r: 4, fill: C.navy, strokeWidth: 0 }} activeDot={{ r: 6 }}
+                      />
+                      <Line
+                        yAxisId="right" type="monotone" dataKey="totalHours" name="Hours Worked"
+                        stroke={C.success} strokeWidth={2.5}
+                        dot={{ r: 4, fill: C.success, strokeWidth: 0 }} activeDot={{ r: 6 }}
+                      />
+                      <Line
+                        yAxisId="left" type="monotone" dataKey="totalIncentives" name="Incentives (₹)"
+                        stroke={C.amber} strokeWidth={2} strokeDasharray="5 4"
+                        dot={{ r: 3, fill: C.amber, strokeWidth: 0 }} activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </ChartCard>
+
+        {/* ── Vehicle Gate Activity — mini monthly bar (Option B) ── */}
+            <ChartCard
+              className="aa-a4"
+              title="Vehicle Gate Activity — Monthly Logged"
+              style={{ marginBottom: "20px" }}
+            >
+              {data.byMonth.length === 0 ||
+               data.byMonth.every(m => (m.totalVehiclesLogged || 0) === 0) ? (
+                <NoData />
+              ) : (
+                <div className="aa-chart-h120">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={data.byMonth}
+                      margin={{ top: 2, right: 24, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid {...CHART_GRID} />
+                      <XAxis dataKey="label" tick={AXIS_TICK} />
+                      <YAxis tick={AXIS_TICK} allowDecimals={false} width={35} />
+                      <Tooltip content={<LightTooltip />} />
+                      <Bar
+                        dataKey="totalVehiclesLogged"
+                        name="Vehicles Logged"
+                        fill="#0E7490"
+                        radius={[0, 0, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               )}
             </ChartCard>
 
@@ -960,17 +1214,19 @@ export default function AdminAnalytics() {
               title={isBranchAdmin ? "Incentives vs Labour" : "Incentives vs Labour by Branch"}
             >
               {data.byBranch.length === 0 ? <NoData /> : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid {...CHART_GRID} />
-                    <XAxis dataKey="_id" tick={AXIS_TICK} />
-                    <YAxis tick={AXIS_TICK} tickFormatter={v => fmt(v)} />
-                    <Tooltip content={<LightTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
-                    <Bar dataKey="totalLabour"     name="Labour (₹)"     fill={C.navy}  radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="totalIncentives" name="Incentives (₹)" fill={C.amber} radius={[0, 0, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="aa-chart-h240">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.byBranch} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid {...CHART_GRID} />
+                      <XAxis dataKey="_id" tick={AXIS_TICK} />
+                      <YAxis tick={AXIS_TICK} tickFormatter={v => fmt(v)} width={55} />
+                      <Tooltip content={<LightTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                      <Bar dataKey="totalLabour"     name="Labour (₹)"     fill={C.navy}  radius={[0,0,0,0]} />
+                      <Bar dataKey="totalIncentives" name="Incentives (₹)" fill={C.amber} radius={[0,0,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               )}
             </ChartCard>
           </>
