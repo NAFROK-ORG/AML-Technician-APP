@@ -140,5 +140,7 @@ entrySchema.index({ technicianType: 1 });
 entrySchema.index({ vehicleNo: 1 });
 entrySchema.index({ vehicleNoNorm: 1, branch: 1, createdAt: 1 }); // ← NEW: security linking
 entrySchema.index({ userId: 1, date: -1 });                        // ← NEW: pagination + date-range
+entrySchema.index({ branch: 1, date: 1 });                         // ← NEW: getAnalytics + getBranchDashboard — both filter {branch, date} together, every call
+entrySchema.index({ date: 1 });                                    // ← NEW: superadmin "All Branches" analytics — date-only filter, branch absent           // ← NEW: pagination + date-range
 
 module.exports = mongoose.model("Entry", entrySchema);
