@@ -1,6 +1,7 @@
-const Entry      = require("../models/Entry");
-const User       = require("../models/User");
-const Attendance = require("../models/Attendance");
+const Entry       = require("../models/Entry");
+const User        = require("../models/User");
+const Attendance  = require("../models/Attendance");
+const SecurityLog = require("../models/SecurityLog");
 const { writeAuditLog } = require("../utils/auditLogger");
 const { getOrSet } = require("../utils/cache");
 
@@ -34,6 +35,18 @@ const parseMonthParam = (monthStr) => {
   const now = new Date();
   return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITY: utcMidnight — mirrors securityController.js exactly. Kept local
+// (not shared) to avoid a circular require between the two controllers. If
+// this ever drifts from securityController's version, that's a real bug —
+// they must stay byte-for-byte identical in behavior.
+// ─────────────────────────────────────────────────────────────────────────────
+function utcMidnight(input) {
+  const d = input ? new Date(input) : new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branches  ← SUPERADMIN ONLY
@@ -523,7 +536,7 @@ const getAnalytics = async (req, res) => {
     //  30s for live/current views — reflects entries as they come in
 
     const payload = await getOrSet(cacheKey, ttlSeconds, async () => {
-      const [overviewArr, byBranch, byCategory, byMonth, topTechs] =
+const [overviewArr, byBranch, byCategory, byMonth, topTechs, vehicleLogCount, vehiclesByMonth, vehiclesByBranch] =
         await Promise.all([
 
           Entry.aggregate([
@@ -619,27 +632,127 @@ const getAnalytics = async (req, res) => {
               },
             },
           ]),
+        // ── Vehicle gate counts — same branch+date filter, SecurityLog ──────
+          // SecurityLog.date is utcMidnight, same shape as Entry.date — matchStage works as-is.
+          // Both run in parallel inside the existing cache wrapper, zero latency added.
+          SecurityLog.countDocuments(matchStage),
+       SecurityLog.aggregate([
+            { $match: matchStage },
+            {
+              $group: {
+                _id: { year: { $year: "$date" }, month: { $month: "$date" } },
+                totalLogged: { $sum: 1 },
+              },
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } },
+            { $limit: 12 },
+          ]),
+          // ── Vehicle gate counts BY BRANCH — mirrors the Entry byBranch query ──
+          SecurityLog.aggregate([
+            { $match: matchStage },
+            { $group: { _id: "$branch", totalVehiclesLogged: { $sum: 1 } } },
+            { $sort: { totalVehiclesLogged: -1 } },
+          ]),
         ]);
-
-      const MONTH_NAMES = [
+    const MONTH_NAMES = [
         "Jan","Feb","Mar","Apr","May","Jun",
         "Jul","Aug","Sep","Oct","Nov","Dec",
       ];
 
+      // ── Merge byMonth: union of months present in Entry OR SecurityLog ──────
+      // A month that only has vehicle logs (no job-card entries yet — e.g. a
+      // brand-new branch) used to be invisible on this chart. Building from
+      // both sources fixes that.
+      const monthMap = new Map();
+
+      for (const m of byMonth) {
+        const key = `${m._id.year}-${m._id.month}`;
+        monthMap.set(key, {
+          year: m._id.year, month: m._id.month,
+          totalLabour: m.totalLabour, totalHours: m.totalHours,
+          totalIncentives: m.totalIncentives, totalEntries: m.totalEntries,
+          totalVehiclesLogged: 0,
+        });
+      }
+      for (const v of vehiclesByMonth) {
+        const key = `${v._id.year}-${v._id.month}`;
+        if (monthMap.has(key)) {
+          monthMap.get(key).totalVehiclesLogged = v.totalLogged;
+        } else {
+          monthMap.set(key, {
+            year: v._id.year, month: v._id.month,
+            totalLabour: 0, totalHours: 0, totalIncentives: 0, totalEntries: 0,
+            totalVehiclesLogged: v.totalLogged,
+          });
+        }
+      }
+
+      const mergedByMonth = [...monthMap.values()]
+        .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+        .slice(-12) // either source alone is capped at 12; the union can exceed that — keep most recent 12
+        .map((m) => ({
+          label:               `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(2)}`,
+          totalLabour:         m.totalLabour,
+          totalHours:          m.totalHours,
+          totalIncentives:     m.totalIncentives,
+          totalEntries:        m.totalEntries,
+          totalVehiclesLogged: m.totalVehiclesLogged,
+        }));
+
+      // ── Merge byBranch: union of branches in Entry OR SecurityLog ────────────
+      // Same fix at the branch grain, plus: when no single branch is selected
+      // (superadmin "All Branches"), every VALID_BRANCHES entry is guaranteed
+      // to appear, even at zero — a branch never silently drops off the
+      // comparison chart just because one data source has nothing for it.
+      const branchMap = new Map();
+
+      for (const b of byBranch) {
+        branchMap.set(b._id, {
+          _id: b._id,
+          totalLabour: b.totalLabour, totalHours: b.totalHours,
+          totalIncentives: b.totalIncentives, totalEntries: b.totalEntries,
+          totalLeaveDays: b.totalLeaveDays,
+          totalVehiclesLogged: 0,
+        });
+      }
+      for (const v of vehiclesByBranch) {
+        if (branchMap.has(v._id)) {
+          branchMap.get(v._id).totalVehiclesLogged = v.totalVehiclesLogged;
+        } else {
+          branchMap.set(v._id, {
+            _id: v._id,
+            totalLabour: 0, totalHours: 0, totalIncentives: 0,
+            totalEntries: 0, totalLeaveDays: 0,
+            totalVehiclesLogged: v.totalVehiclesLogged,
+          });
+        }
+      }
+
+      const targetBranches = branch ? [branch] : VALID_BRANCHES;
+      for (const b of targetBranches) {
+        if (!branchMap.has(b)) {
+          branchMap.set(b, {
+            _id: b,
+            totalLabour: 0, totalHours: 0, totalIncentives: 0,
+            totalEntries: 0, totalLeaveDays: 0, totalVehiclesLogged: 0,
+          });
+        }
+      }
+
+      const mergedByBranch = [...branchMap.values()]
+        .sort((a, b) => b.totalLabour - a.totalLabour);
+
       return {
-        overview: overviewArr[0] || {
-          totalLabour: 0, totalHours: 0, totalIncentives: 0,
-          totalLeaveDays: 0, totalEntries: 0,
+        overview: {
+          ...(overviewArr[0] || {
+            totalLabour: 0, totalHours: 0, totalIncentives: 0,
+            totalLeaveDays: 0, totalEntries: 0,
+          }),
+          totalVehiclesLogged: vehicleLogCount,
         },
-        byBranch,
+        byBranch: mergedByBranch,
         byCategory,
-        byMonth: byMonth.map((m) => ({
-          label:           `${MONTH_NAMES[m._id.month - 1]} ${String(m._id.year).slice(2)}`,
-          totalLabour:     m.totalLabour,
-          totalHours:      m.totalHours,
-          totalIncentives: m.totalIncentives,
-          totalEntries:    m.totalEntries,
-        })),
+        byMonth: mergedByMonth,
         topTechs,
         scopedBranch: isBranchAdmin(req) ? req.user.branch : null,
       };
@@ -649,6 +762,268 @@ const getAnalytics = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Analytics fetch failed" });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/analytics/vehicle?range=today|week|month&branch=<BRANCH>
+//
+// Dedicated vehicle-ops analytics: assignment rate, response time, peak
+// hours/days, branch comparison — derived using the SAME linking algorithm
+// as getBoardLogs (securityController.js), adapted for a date RANGE instead
+// of a single day.
+//
+// Correctness note — mirrors getBoardLogs's cross-date fix:
+//   Because the whole range is fetched in one query, repeat visits WITHIN
+//   the range are already in logGroups — no cross-lookup needed for those.
+//   The only blind spot is the LAST log per vehicle in the range: if that
+//   vehicle's next visit happens after the range ends, an entry filed for
+//   that later visit could bleed into this window's stats. One bounded
+//   aggregation (crossRangeNextMap) closes that gap, same technique
+//   getBoardLogs uses across day boundaries.
+//
+// Performance: both queries hit existing compound indexes
+// ({vehicleNoNorm,branch,loggedAt} / {vehicleNoNorm,branch,createdAt}).
+// At month-range volume (~3,000 logs / ~2,500 entries) everything past the
+// two DB reads is an in-memory partition — no per-document round trips.
+// ─────────────────────────────────────────────────────────────────────────────
+const getVehicleAnalytics = async (req, res) => {
+  try {
+    const range = ["today", "week", "month"].includes(req.query.range)
+      ? req.query.range
+      : "today";
+
+    const isAdmin = req.user.role === "admin";
+    let branch = null;
+    if (isAdmin) {
+      branch = req.user.branch;
+    } else if (req.query.branch && req.query.branch !== "all") {
+      if (!VALID_BRANCHES.includes(req.query.branch)) {
+        return res.status(400).json({ message: "Invalid branch." });
+      }
+      branch = req.query.branch;
+    }
+
+    const today = utcMidnight();
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    let startDate, endDate;
+    if (range === "week") {
+      startDate = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+      endDate = tomorrow;
+    } else if (range === "month") {
+      startDate = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000);
+      endDate = tomorrow;
+    } else {
+      startDate = today;
+      endDate = tomorrow;
+    }
+
+    const branchFilter = branch ? { branch } : {};
+    const cacheKey = `vehicleAnalytics:${range}:${branch || "all"}`;
+    const ttlSeconds = range === "today" ? 25 : range === "week" ? 60 : 120;
+
+    const payload = await getOrSet(cacheKey, ttlSeconds, async () => {
+      const logFilter = { date: { $gte: startDate, $lt: endDate }, ...branchFilter };
+      const allLogs = await SecurityLog.find(logFilter)
+        .sort({ vehicleNoNorm: 1, loggedAt: 1 })
+        .lean();
+
+      const dayMs = 24 * 60 * 60 * 1000;
+      const totalDays = Math.round((endDate.getTime() - startDate.getTime()) / dayMs);
+      const emptyTrend = Array.from({ length: totalDays }, (_, i) => {
+        const d = new Date(startDate.getTime() + i * dayMs);
+        return { date: d.toISOString().slice(0, 10), logged: 0, assigned: 0 };
+      });
+      const emptyPeakHours = Array.from({ length: 24 }, (_, h) => ({
+        hour: h,
+        label: h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`,
+        count: 0,
+      }));
+      const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const emptyPeakDays = DAY_NAMES.map((name, i) => ({ day: i, dayName: name, count: 0 }));
+
+      if (allLogs.length === 0) {
+        const targetBranches = branch ? [branch] : VALID_BRANCHES;
+        return {
+          range, branch: branch || "all",
+          summary: {
+            totalLogged: 0, assigned: 0, unassigned: 0, assignmentRate: 0,
+            avgResponseMin: null, minResponseMin: null, maxResponseMin: null,
+          },
+          byBranch: targetBranches.map((b) => ({
+            branch: b, logged: 0, assigned: 0, unassigned: 0,
+            assignmentRate: 0, avgResponseMin: null,
+          })),
+          responseDist: { fast: 0, normal: 0, slow: 0 },
+          trend: emptyTrend,
+          peakHours: emptyPeakHours,
+          peakDays: emptyPeakDays,
+        };
+      }
+
+      // ── Build logGroups: vehicleNoNorm|branch → SecurityLog[] (asc loggedAt) ─
+      const logGroups = new Map();
+      let globalMinLoggedAt = Infinity;
+      for (const log of allLogs) {
+        const key = `${log.vehicleNoNorm}|${log.branch}`;
+        if (!logGroups.has(key)) logGroups.set(key, []);
+        logGroups.get(key).push(log);
+        const t = new Date(log.loggedAt).getTime();
+        if (t < globalMinLoggedAt) globalMinLoggedAt = t;
+      }
+
+      const vehicleNorms = [...new Set(allLogs.map((l) => l.vehicleNoNorm))];
+
+      // ── Cross-range next-log lookup — same fix as getBoardLogs's cross-date ─
+      const crossRangeNextLogDocs = await SecurityLog.aggregate([
+        {
+          $match: {
+            vehicleNoNorm: { $in: vehicleNorms },
+            ...branchFilter,
+            loggedAt: { $gte: endDate },
+          },
+        },
+        { $sort: { vehicleNoNorm: 1, branch: 1, loggedAt: 1 } },
+        {
+          $group: {
+            _id: { vehicleNoNorm: "$vehicleNoNorm", branch: "$branch" },
+            nextLoggedAt: { $first: "$loggedAt" },
+          },
+        },
+      ]);
+      const crossRangeNextMap = new Map();
+      for (const doc of crossRangeNextLogDocs) {
+        const key = `${doc._id.vehicleNoNorm}|${doc._id.branch}`;
+        crossRangeNextMap.set(key, new Date(doc.nextLoggedAt).getTime());
+      }
+
+      // ── Batch fetch Entries — no upper bound, same rationale as getBoardLogs ─
+      const entryFilter = {
+        vehicleNoNorm: { $in: vehicleNorms },
+        createdAt: { $gte: new Date(globalMinLoggedAt) },
+        ...branchFilter,
+      };
+      const allEntries = await Entry.find(entryFilter).sort({ createdAt: 1 }).lean();
+
+      // ── Partition — mirrors getBoardLogs's descending-scan algorithm ────────
+      const entryMap = new Map();
+      for (const entry of allEntries) {
+        const key = `${entry.vehicleNoNorm}|${entry.branch}`;
+        const logsForVehicle = logGroups.get(key);
+        if (!logsForVehicle) continue;
+        const entryTime = new Date(entry.createdAt).getTime();
+        for (let i = logsForVehicle.length - 1; i >= 0; i--) {
+          const logTime = new Date(logsForVehicle[i].loggedAt).getTime();
+          if (entryTime >= logTime) {
+            const intraRangeNextTime = i + 1 < logsForVehicle.length
+              ? new Date(logsForVehicle[i + 1].loggedAt).getTime()
+              : null;
+            const crossRangeNextTime = i === logsForVehicle.length - 1
+              ? (crossRangeNextMap.get(key) ?? null)
+              : null;
+            let nextLogTime;
+            if (intraRangeNextTime !== null && crossRangeNextTime !== null) {
+              nextLogTime = Math.min(intraRangeNextTime, crossRangeNextTime);
+            } else {
+              nextLogTime = intraRangeNextTime ?? crossRangeNextTime ?? Infinity;
+            }
+            if (entryTime < nextLogTime) {
+              const lid = logsForVehicle[i]._id.toString();
+              if (!entryMap.has(lid)) entryMap.set(lid, []);
+              entryMap.get(lid).push(entry);
+            }
+            break;
+          }
+        }
+      }
+
+      // ── Compute stats ─────────────────────────────────────────────────────
+      let assigned = 0, unassigned = 0;
+      const responseMins = [];
+      const branchStats = new Map();
+      const trendMap = new Map();
+      const hourMap = new Map();
+      const dowMap = new Map();
+
+      for (const log of allLogs) {
+        const logEntries = entryMap.get(log._id.toString()) || [];
+        const isAssigned = logEntries.length > 0;
+        const dateStr = log.date.toISOString().slice(0, 10);
+
+        if (!trendMap.has(dateStr)) trendMap.set(dateStr, { logged: 0, assigned: 0 });
+        trendMap.get(dateStr).logged++;
+
+        const hour = new Date(log.loggedAt).getUTCHours();
+        hourMap.set(hour, (hourMap.get(hour) || 0) + 1);
+        const dow = new Date(log.date).getUTCDay();
+        dowMap.set(dow, (dowMap.get(dow) || 0) + 1);
+
+        if (!branchStats.has(log.branch)) {
+          branchStats.set(log.branch, { logged: 0, assigned: 0, unassigned: 0, responseMins: [] });
+        }
+        const bs = branchStats.get(log.branch);
+        bs.logged++;
+
+        if (isAssigned) {
+          assigned++;
+          trendMap.get(dateStr).assigned++;
+          bs.assigned++;
+          const responseMin = Math.round(
+            (new Date(logEntries[0].createdAt).getTime() - new Date(log.loggedAt).getTime()) / 60000
+          );
+          if (responseMin >= 0) {
+            responseMins.push(responseMin);
+            bs.responseMins.push(responseMin);
+          }
+        } else {
+          unassigned++;
+          bs.unassigned++;
+        }
+      }
+
+      const totalLogged = allLogs.length;
+      const assignmentRate = totalLogged > 0 ? Math.round((assigned / totalLogged) * 1000) / 10 : 0;
+      const avgResponseMin = responseMins.length > 0
+        ? Math.round(responseMins.reduce((a, b) => a + b, 0) / responseMins.length) : null;
+      const minResponseMin = responseMins.length > 0 ? Math.min(...responseMins) : null;
+      const maxResponseMin = responseMins.length > 0 ? Math.max(...responseMins) : null;
+
+      const responseDist = {
+        fast:   responseMins.filter((m) => m < 30).length,
+        normal: responseMins.filter((m) => m >= 30 && m <= 60).length,
+        slow:   responseMins.filter((m) => m > 60).length,
+      };
+
+      const targetBranches = branch ? [branch] : VALID_BRANCHES;
+      const byBranch = targetBranches.map((b) => {
+        const bs = branchStats.get(b) || { logged: 0, assigned: 0, unassigned: 0, responseMins: [] };
+        const bRate = bs.logged > 0 ? Math.round((bs.assigned / bs.logged) * 1000) / 10 : 0;
+        const bAvg = bs.responseMins.length > 0
+          ? Math.round(bs.responseMins.reduce((a, c) => a + c, 0) / bs.responseMins.length) : null;
+        return {
+          branch: b, logged: bs.logged, assigned: bs.assigned, unassigned: bs.unassigned,
+          assignmentRate: bRate, avgResponseMin: bAvg,
+        };
+      });
+
+      const trend = emptyTrend.map((t) => {
+        const found = trendMap.get(t.date);
+        return found ? { date: t.date, logged: found.logged, assigned: found.assigned } : t;
+      });
+      const peakHours = emptyPeakHours.map((h) => ({ ...h, count: hourMap.get(h.hour) || 0 }));
+      const peakDays  = emptyPeakDays.map((d) => ({ ...d, count: dowMap.get(d.day) || 0 }));
+
+      return {
+        range, branch: branch || "all",
+        summary: { totalLogged, assigned, unassigned, assignmentRate, avgResponseMin, minResponseMin, maxResponseMin },
+        byBranch, responseDist, trend, peakHours, peakDays,
+      };
+    });
+
+    res.json(payload);
+  } catch (err) {
+    console.error("[getVehicleAnalytics]", err);
+    res.status(500).json({ message: "Vehicle analytics fetch failed" });
   }
 };
 
@@ -746,6 +1121,7 @@ module.exports = {
   deleteEntry,
   exportTechnicianData,
   getAnalytics,
+  getVehicleAnalytics,
   editUser,
   deleteUser,
 };
