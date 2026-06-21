@@ -11,12 +11,13 @@ import { useAuthStore } from "../store/authStore";
    Do not add security-specific items here; the security page has one route.
 ─────────────────────────────────────────────────────────────────── */
 const ADMIN_NAV = [
-  { path: "/admin",                label: "Dashboard",      superadminOnly: false },
-  { path: "/admin/analytics",      label: "Analytics",      superadminOnly: false },
-  { path: "/admin/attendance",     label: "Attendance",     superadminOnly: false },
-  { path: "/admin/vehicle-log",    label: "Vehicle Log",    superadminOnly: false },
-  { path: "/admin/vehicle-search", label: "Vehicle Search", superadminOnly: true  },
-  { path: "/admin/audit-log",      label: "Audit Log",      superadminOnly: true  },
+  { path: "/admin",                   label: "Dashboard",      superadminOnly: false },
+  { path: "/admin/analytics",         label: "Analytics",      superadminOnly: false },
+  { path: "/admin/attendance",        label: "Attendance",     superadminOnly: false },
+  { path: "/admin/vehicle-log",       label: "Vehicle Log",    superadminOnly: false },
+  { path: "/admin/vehicle-analytics", label: "GATE log",    superadminOnly: false },
+  { path: "/admin/vehicle-search",    label: "Vehicle Search", superadminOnly: true  },
+  { path: "/admin/audit-log",         label: "Audit Log",      superadminOnly: true  },
 ];
 
 /* ─── Injected styles ──────────────────────────────────────────── */
