@@ -1,6 +1,5 @@
 const express = require("express");
 const router  = express.Router();
-
 const {
   getBranches,
   getBranchDashboard,
@@ -10,9 +9,11 @@ const {
   deleteEntry,
   exportTechnicianData,
   getAnalytics,
-  editUser,    // ← NEW
-  deleteUser,  // ← NEW
+  getVehicleAnalytics, // ← NEW (Task 2)
+  editUser,
+  deleteUser,
 } = require("../controllers/adminController");
+
 
 const { protect }                          = require("../middleware/authMiddleware");
 const { adminOrAbove, superAdminOnly, branchGuard } = require("../middleware/adminMiddleware");
@@ -34,6 +35,7 @@ router.delete("/user/:userId",                   superAdminOnly, deleteUser);  /
 
 // ── Both admin + superadmin ──────────────────────────────────────────────────
 router.get("/analytics",                        getAnalytics);
+router.get("/analytics/vehicle",                getVehicleAnalytics); // ← NEW (Task 2)
 router.get("/branch/:branch",                   getBranchDashboard);
 router.get("/branch/:branch/technicians",       getBranchTechnicians);
 router.get("/technician/:userId",               getTechnicianEntries);
