@@ -12,19 +12,12 @@ import AdminTechnicianDetail from "./pages/AdminTechnicianDetail";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminAttendance from "./pages/AdminAttendance";
 import VehicleSearch from "./pages/VehicleSearch";
-import SecurityDashboard from "./pages/SecurityDashboard";   // ← NEW
-import VehicleLogBoard from "./pages/VehicleLogBoard";       // ← NEW
-import VehicleAnalytics from "./pages/VehicleAnalytics";     // ← NEW (Task 2)
+import SecurityDashboard from "./pages/SecurityDashboard";
+import VehicleLogBoard from "./pages/VehicleLogBoard";
+import VehicleAnalytics from "./pages/VehicleAnalytics";
 import AuditLog from "./pages/AuditLog";
-/**
- * GuestRoute — blocks /login and /signup for already-authenticated users.
- *
- * Redirect logic:
- *   technician → /dashboard
- *   admin      → /admin   (branch-scoped dashboard)
- *   superadmin → /admin   (same component, full cross-branch view)
- *   security   → /security  ← NEW
- */
+import AttendanceAnalytics from "./pages/AttendanceAnalytics"; // ← NEW
+
 function GuestRoute({ children }) {
   const { token, user } = useAuthStore();
   const [hydrated, setHydrated] = useState(
@@ -44,8 +37,8 @@ function GuestRoute({ children }) {
 
   if (token && user) {
     if (user.role === "technician") return <Navigate to="/dashboard" replace />;
-    if (user.role === "security")   return <Navigate to="/security"  replace />; // ← NEW
-    return <Navigate to="/admin" replace />; // admin and superadmin
+    if (user.role === "security")   return <Navigate to="/security"  replace />;
+    return <Navigate to="/admin" replace />;
   }
 
   return children;
@@ -71,11 +64,7 @@ export default function App() {
           }
         />
 
-        {/*
-          Security only — ← NEW
-          A completely separate page from the technician/admin flows.
-          No attendance gate. No admin nav. Just vehicle logging.
-        */}
+        {/* Security only */}
         <Route
           path="/security"
           element={
@@ -85,17 +74,7 @@ export default function App() {
           }
         />
 
-        {/*
-          Admin + SuperAdmin routes.
-          Both roles use the same pages. The difference is:
-            - AdminBranchDashboard: branch admin sees only their branch (no pill selector),
-              superadmin sees all branches with the pill selector.
-            - AdminAnalytics: branch admin has no branch dropdown (forced server-side),
-              superadmin has the full branch filter UI.
-            - AdminAttendance: same pattern — branch admin is locked to their branch,
-              superadmin gets a branch filter dropdown.
-          The backend enforces all scoping — the frontend just adapts its UI.
-        */}
+        {/* Admin + SuperAdmin */}
         <Route
           path="/admin"
           element={
@@ -120,14 +99,15 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/*
-          Vehicle Log Board — ← NEW
-          Both branch admins AND superadmins.
-          Branch admin: server forces their branch. Superadmin: optional branch filter.
-          role is an array — both roles see this page.
-        */}
-   <Route
+        <Route
+          path="/admin/attendance-analytics"
+          element={
+            <ProtectedRoute role={["admin", "superadmin"]}>
+              <AttendanceAnalytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/vehicle-log"
           element={
             <ProtectedRoute role={["admin", "superadmin"]}>
@@ -143,19 +123,14 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-<Route
-  path="/admin/audit-log"
-  element={
-    <ProtectedRoute role="superadmin">
-      <AuditLog />
-    </ProtectedRoute>
-  }
-/>
-        {/*
-          Vehicle Search — superadmin only.
-          Branch admins cannot access this route — ProtectedRoute redirects them.
-          role is a string (not array) intentionally: this is not shared with admin.
-        */}
+        <Route
+          path="/admin/audit-log"
+          element={
+            <ProtectedRoute role="superadmin">
+              <AuditLog />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/vehicle-search"
           element={
@@ -164,7 +139,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/admin/branch/:branch"
           element={
