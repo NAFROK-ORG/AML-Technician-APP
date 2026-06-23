@@ -443,7 +443,7 @@ export default function AttendanceAnalytics() {
       setError(
         err.response?.status === 403
           ? "Access denied: you do not have permission to view this data."
-          : "Failed to load attendance Analytics. Please try again."
+          : "Failed to load attendance Analytics. Please try Again."
       );
     } finally {
       setLoading(false);
