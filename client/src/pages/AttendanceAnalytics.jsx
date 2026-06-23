@@ -298,7 +298,7 @@ function BranchAnalyticsView({ data }) {
 
       {data.kpis.sundayShiftsTotal > 0 && (
         <p className="ata-sunday-note">
-          {data.kpis.sundayShiftsTotal} optional Sunday shift
+          {data.kpis.sundayShiftsTotal} Optional Sunday shift
           {data.kpis.sundayShiftsTotal !== 1 ? "s" : ""} logged this month
           — not counted in attendance rate
         </p>
