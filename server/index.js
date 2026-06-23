@@ -25,7 +25,10 @@ app.use(helmet({
     useDefaults: false,
     directives: {
       defaultSrc:     ["'none'"],   // deny everything — API serves JSON only
-      connectSrc:     ["'self'"],   // allow same-origin fetch/XHR
+   connectSrc: [
+  "'self'",
+  "https://o4511180998967296.ingest.us.sentry.io",  // ← Sentry error reporting
+],
       frameAncestors: ["'none'"],   // prevent this API being embedded in iframes
       objectSrc:      ["'none'"],
       baseUri:        ["'self'"],
