@@ -13,7 +13,7 @@ const {
   editUser,
   deleteUser,
 } = require("../controllers/adminController");
-
+const { getAttendanceAnalytics } = require("../controllers/attendanceAnalyticsController");
 
 const { protect }                          = require("../middleware/authMiddleware");
 const { adminOrAbove, superAdminOnly, branchGuard } = require("../middleware/adminMiddleware");
@@ -35,7 +35,8 @@ router.delete("/user/:userId",                   superAdminOnly, deleteUser);  /
 
 // ── Both admin + superadmin ──────────────────────────────────────────────────
 router.get("/analytics",                        getAnalytics);
-router.get("/analytics/vehicle",                getVehicleAnalytics); // ← NEW (Task 2)
+router.get("/analytics/vehicle",                getVehicleAnalytics);
+router.get("/analytics/attendance",             getAttendanceAnalytics); // ← NEW (Task 2)
 router.get("/branch/:branch",                   getBranchDashboard);
 router.get("/branch/:branch/technicians",       getBranchTechnicians);
 router.get("/technician/:userId",               getTechnicianEntries);
