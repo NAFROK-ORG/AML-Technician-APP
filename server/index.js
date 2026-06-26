@@ -77,21 +77,71 @@ Sentry.setupExpressErrorHandler(app);
 // Monthly cleanup — 5th of every month at midnight (00:00).
 // ONLY deletes from the `attendance` collection.
 // Never touches `entries`, `users`, or any other collection.
-cron.schedule("0 0 5 * *", async () => {
-  try {
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    oneMonthAgo.setUTCHours(0, 0, 0, 0);
+// Overlap guard — prevents a second trigger from running if the first
+// deleteMany is still in progress (slow Mongo, cold restart race, etc.)
+let cleanupRunning = false;
 
-    // Attendance.deleteMany is scoped to the attendance collection only.
-    const result = await Attendance.deleteMany({ date: { $lt: oneMonthAgo } });
+// Monthly cleanup — 5th of every month at 00:00 UTC (05:30 AM IST).
+//
+// CUTOFF: start of the previous calendar month (UTC midnight, 1st).
+//   Example: runs June 5  →  cutoff = May 1  →  deletes April and earlier.
+//   May's full records are preserved. June's partial records are preserved.
+//   Running on the 5th gives branch managers a 5-day buffer to review
+//   the previous month before anything is touched.
+//
+// WHY NOT the 1st of the month: cutoff is always "start of previous month"
+//   regardless of run date, so data safety is identical — but the 5th gives
+//   ops time to manually intervene if something looks wrong before cleanup fires.
+//
+// Date.UTC(-1 month): when month = 0 (January), month - 1 = -1.
+//   Date.UTC handles this correctly — rolls back to December of prior year.
+//   Verified: new Date(Date.UTC(2025, -1, 1)) === 2024-12-01T00:00:00.000Z
+//
+// ONLY deletes from the `attendance` collection.
+// Never touches entries, users, security logs, or audit logs.
+cron.schedule("0 0 5 * *", async () => {
+  if (cleanupRunning) {
+    console.warn("[Cron] Monthly attendance cleanup already running — skipping this trigger.");
+    return;
+  }
+  cleanupRunning = true;
+
+  try {
+    const now = new Date();
+
+    // Start of the previous calendar month — always a clean UTC midnight boundary.
+    // Date.UTC() never uses local timezone, safe on any host.
+    const cutoff = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() - 1, // Date.UTC handles January (0-1 = -1) correctly
+      1
+    ));
+
+    // Count before deleting — never destroy blind.
+    const countBefore = await Attendance.countDocuments({ date: { $lt: cutoff } });
+
+    if (countBefore === 0) {
+      console.log(
+        `[Cron] Monthly attendance cleanup — nothing to delete ` +
+        `(cutoff: ${cutoff.toISOString().slice(0, 10)})`
+      );
+      return;
+    }
+
+    const result = await Attendance.deleteMany({ date: { $lt: cutoff } });
 
     console.log(
-      `[Cron] Monthly attendance cleanup — ${result.deletedCount} records deleted ` +
-      `(older than ${oneMonthAgo.toISOString().split("T")[0]})`
+      `[Cron] Monthly attendance cleanup complete — ` +
+      `${result.deletedCount}/${countBefore} records deleted ` +
+      `(records before ${cutoff.toISOString().slice(0, 10)})`
     );
   } catch (err) {
     console.error("[Cron] Monthly attendance cleanup failed:", err);
+    // Sentry captures this automatically. No re-throw — a failed cleanup
+    // must never crash the server process.
+  } finally {
+    // Always release the guard, even if the try block returned early.
+    cleanupRunning = false;
   }
 });
 
