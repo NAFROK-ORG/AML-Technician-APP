@@ -1,14 +1,7 @@
-const Attendance = require("../models/Attendance");
-const User       = require("../models/User");
-const Entry      = require("../models/Entry");
-
-// ─── Helper: UTC midnight for a given date (or today) ────────────────────────
-// All dates are normalized to UTC midnight so one calendar day = one bucket.
-function utcMidnight(input) {
-  const d = input ? new Date(input) : new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
+const Attendance      = require("../models/Attendance");
+const User            = require("../models/User");
+const Entry           = require("../models/Entry");
+const { utcMidnight } = require("../utils/timeUtils");
 
 // ─── GET /api/attendance/today ────────────────────────────────────────────────
 // Technician: check whether today's attendance has already been marked.
