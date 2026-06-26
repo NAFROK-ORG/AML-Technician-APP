@@ -9,13 +9,18 @@ const {
   deleteEntry,
   exportTechnicianData,
   getAnalytics,
-  getVehicleAnalytics, // ← NEW (Task 2)
+  getVehicleAnalytics,
+  exportVehicleLogs,
   editUser,
   deleteUser,
 } = require("../controllers/adminController");
-const { getAttendanceAnalytics } = require("../controllers/attendanceAnalyticsController");
 
-const { protect }                          = require("../middleware/authMiddleware");
+const {
+  getAttendanceAnalytics,
+  getAttendanceExport,          // [NEW-EXPORT]
+} = require("../controllers/attendanceAnalyticsController");
+
+const { protect }                                    = require("../middleware/authMiddleware");
 const { adminOrAbove, superAdminOnly, branchGuard } = require("../middleware/adminMiddleware");
 
 /**
@@ -29,19 +34,24 @@ const { adminOrAbove, superAdminOnly, branchGuard } = require("../middleware/adm
 router.use(protect, adminOrAbove, branchGuard);
 
 // ── Superadmin only ──────────────────────────────────────────────────────────
-router.get   ("/branches",                       superAdminOnly, getBranches);
-router.put   ("/user/:userId",                   superAdminOnly, editUser);    // ← NEW
-router.delete("/user/:userId",                   superAdminOnly, deleteUser);  // ← NEW
+router.get   ("/branches",     superAdminOnly, getBranches);
+router.put   ("/user/:userId", superAdminOnly, editUser);
+router.delete("/user/:userId", superAdminOnly, deleteUser);
 
 // ── Both admin + superadmin ──────────────────────────────────────────────────
-router.get("/analytics",                        getAnalytics);
-router.get("/analytics/vehicle",                getVehicleAnalytics);
-router.get("/analytics/attendance",             getAttendanceAnalytics); // ← NEW (Task 2)
-router.get("/branch/:branch",                   getBranchDashboard);
-router.get("/branch/:branch/technicians",       getBranchTechnicians);
-router.get("/technician/:userId",               getTechnicianEntries);
-router.put("/entry/:id",                        editEntry);
-router.delete("/entry/:id",                     deleteEntry);
-router.get("/technician/:userId/export",        exportTechnicianData);
+router.get("/analytics",                          getAnalytics);
+router.get("/analytics/vehicle",                  getVehicleAnalytics);
+router.get("/analytics/vehicle/export",           exportVehicleLogs);
+// NOTE: /export route MUST appear before the base /analytics/attendance route.
+// Express matches paths in registration order — without this ordering, a request
+// to /analytics/attendance/export would never reach this handler.
+router.get("/analytics/attendance/export",        getAttendanceExport);  // [NEW-EXPORT]
+router.get("/analytics/attendance",               getAttendanceAnalytics);
+router.get("/branch/:branch",                     getBranchDashboard);
+router.get("/branch/:branch/technicians",         getBranchTechnicians);
+router.get("/technician/:userId",                 getTechnicianEntries);
+router.put("/entry/:id",                          editEntry);
+router.delete("/entry/:id",                       deleteEntry);
+router.get("/technician/:userId/export",          exportTechnicianData);
 
 module.exports = router;
