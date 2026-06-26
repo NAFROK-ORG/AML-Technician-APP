@@ -2,13 +2,7 @@ const SecurityLog            = require("../models/SecurityLog");
 const Entry                  = require("../models/Entry");
 const { normalizeVehicleNo } = require("../utils/vehicleUtils");
 const { getOrSet }           = require("../utils/cache");
-
-// ─── Helper: UTC midnight ─────────────────────────────────────────────────────
-function utcMidnight(input) {
-  const d = input ? new Date(input) : new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
+const { utcMidnight }        = require("../utils/timeUtils");
 
 // ─── POST /api/security/log ───────────────────────────────────────────────────
 const createLog = async (req, res) => {
