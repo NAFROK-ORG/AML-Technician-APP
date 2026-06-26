@@ -2,6 +2,7 @@
  * server/controllers/attendanceAnalyticsController.js
  *
  * GET /api/admin/analytics/attendance
+ * GET /api/admin/analytics/attendance/export
  *
  * ── Working-day model ──────────────────────────────────────────────────
  * Mon–Sat only for rate / trend / dip-detection denominator.
@@ -13,6 +14,22 @@
  * known branches concurrently (Promise.allSettled) — avoids a global
  * date-range scan that would bypass those indexes as Entry grows.
  * Promise.allSettled means one failing branch never kills the whole view.
+ *
+ * ── CHANGES IN THIS VERSION ────────────────────────────────────────────
+ * [FIX-STATUS]  statusFor() now receives consistencyScore, not rate.
+ *               A technician with 85% attendance but 100% ghost days now
+ *               shows Critical, not Good. Rate alone was misleading.
+ *
+ * [FIX-SORT]    technicianRows sorted by consistencyScore, not rate.
+ *               Table order now reflects actual productive contribution.
+ *
+ * [NEW-BUCKETS] markBuckets added to each technicianRow — per-technician
+ *               count of how many marks fell before 8AM, 8–9AM, 9–10AM,
+ *               and after 10AM. Used by the CSV export and frontend table.
+ *
+ * [NEW-EXPORT]  getAttendanceExport — dedicated branch-scoped export
+ *               endpoint. Always bypasses cache (export = fresh data).
+ *               Requires a specific branch; "all" is rejected.
  */
 
 const User       = require("../models/User");
@@ -20,21 +37,23 @@ const Attendance = require("../models/Attendance");
 const Entry      = require("../models/Entry");
 const { getOrSet }       = require("../utils/cache");
 const { VALID_BRANCHES } = require("../utils/constants");
+const {
+  utcMidnight,
+  toISTHour:                 istHour,
+  toISTMinutesSinceMidnight: istMinutesSinceMidnight,
+} = require("../utils/timeUtils");
 
 // ── Constants ─────────────────────────────────────────────────────────
-const IST_OFFSET_MS        = 5.5 * 60 * 60 * 1000;
 const DAY_MS               = 24 * 60 * 60 * 1000;
 const DAY_NAMES            = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WORKING_DAYS_OF_WEEK = [1, 2, 3, 4, 5, 6]; // Mon–Sat; 0=Sun
 const CACHE_TTL_SECONDS    = 60;
-const LATE_FLAG_THRESHOLD  = 3;  // days after 10 AM IST before flagging a technician
+// Minimum number of after-10AM-IST mark days before a technician is flagged
+const LATE_FLAG_THRESHOLD  = 3;
 const DIP_THRESHOLD_POINTS = 15; // % below a branch's MTD avg to count as a dip
 const DOW_FLAG_GAP         = 12; // % gap between weakest and other days to emit a flag
 
 // ── In-flight request de-duplication ──────────────────────────────────
-// Prevents cache-stampede: if 3 requests land on the same key before the
-// first fetch resolves, all 3 share one Promise instead of spawning 3 DB
-// round-trips.
 const inFlight = new Map();
 
 async function getOrSetDeduped(key, ttlSeconds, fetchFn) {
@@ -42,13 +61,6 @@ async function getOrSetDeduped(key, ttlSeconds, fetchFn) {
   const promise = getOrSet(key, ttlSeconds, fetchFn).finally(() => inFlight.delete(key));
   inFlight.set(key, promise);
   return promise;
-}
-
-// ── Date helpers ───────────────────────────────────────────────────────
-function utcMidnight(input) {
-  const d = input ? new Date(input) : new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
 }
 
 function isoDateStr(d) {
@@ -80,16 +92,6 @@ function isWorkingDay(date) {
   return WORKING_DAYS_OF_WEEK.includes(date.getUTCDay());
 }
 
-// ── IST helpers ────────────────────────────────────────────────────────
-function istHour(date) {
-  return new Date(date.getTime() + IST_OFFSET_MS).getUTCHours();
-}
-
-function istMinutesSinceMidnight(date) {
-  const ist = new Date(date.getTime() + IST_OFFSET_MS);
-  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
-}
-
 function fmtISTFromMinutes(mins) {
   if (mins === null || mins === undefined) return null;
   let h = Math.floor(mins / 60);
@@ -107,15 +109,17 @@ function markTimeBucket(hour) {
   return "After 10AM";
 }
 
-function statusFor(rate) {
-  if (rate >= 95) return "Excellent";
-  if (rate >= 80) return "Good";
-  if (rate >= 65) return "At Risk";
+// [FIX-STATUS] Receives consistencyScore now — not raw rate.
+// consistencyScore = rate × nonGhostRatio, so ghost attendance is penalised.
+// Thresholds unchanged — they self-correct with the new input.
+function statusFor(score) {
+  if (score >= 95) return "Excellent";
+  if (score >= 80) return "Good";
+  if (score >= 65) return "At Risk";
   return "Critical";
 }
 
 // ── Data fetch: one branch, always hits {branch,date} index ───────────
-// Attendance + Entry queries run concurrently once technicians are known.
 async function fetchBranchSlice(branch, from, elapsedTo) {
   const technicians = await User.find({ role: "technician", profileComplete: true, branch })
     .select("_id name technicianId branch technicianType")
@@ -138,9 +142,6 @@ async function fetchBranchSlice(branch, from, elapsedTo) {
 }
 
 // ── Entry day-key set for ghost detection ──────────────────────────────
-// Entry.date is NOT normalized to midnight (createEntry uses new Date()).
-// Attendance.date IS always UTC midnight. Re-normalize entry dates before
-// key comparison — exact field equality would miss real matches.
 function buildEntryDayKeys(entries) {
   const keys = new Set();
   for (const e of entries) {
@@ -157,7 +158,7 @@ function computeTechnicianStats(technicians, attendance, entries, workingDaysSoF
   const perTech = new Map();
   for (const t of technicians) {
     perTech.set(String(t._id), {
-      tech: t,
+      tech:             t,
       daysPresent:      0,
       ghostDays:        0,
       totalPresentDays: 0,
@@ -188,6 +189,7 @@ function computeTechnicianStats(technicians, attendance, entries, workingDaysSoF
   }
 
   const technicianRows = [];
+
   for (const { tech, daysPresent, ghostDays, totalPresentDays, markMinutes, sundayDates } of perTech.values()) {
     const rate = workingDaysSoFarCount > 0
       ? Math.round((daysPresent / workingDaysSoFarCount) * 100)
@@ -200,6 +202,18 @@ function computeTechnicianStats(technicians, attendance, entries, workingDaysSoF
       ? markMinutes.reduce((s, m) => s + m, 0) / markMinutes.length
       : null;
 
+    // [NEW-BUCKETS] Per-technician mark-time bucket counts.
+    // Mirrors the branch-level buckets in computeMarkTimeDistribution
+    // but stored per-row so the CSV export has per-person granularity.
+    const markBuckets = { before8: 0, am8to9: 0, am9to10: 0, after10: 0 };
+    for (const m of markMinutes) {
+      const h = Math.floor(m / 60);
+      if      (h < 8)  markBuckets.before8++;
+      else if (h < 9)  markBuckets.am8to9++;
+      else if (h < 10) markBuckets.am9to10++;
+      else             markBuckets.after10++;
+    }
+
     technicianRows.push({
       id:             tech._id,
       name:           tech.name,
@@ -210,13 +224,16 @@ function computeTechnicianStats(technicians, attendance, entries, workingDaysSoF
       rate,
       ghostDays,
       consistencyScore,
+      markBuckets,                          // [NEW-BUCKETS]
       avgMarkTime:  fmtISTFromMinutes(avgMarkMinutes),
-      status:       statusFor(rate),
+      status:       statusFor(consistencyScore), // [FIX-STATUS] was statusFor(rate)
       sundayShifts: { count: sundayDates.length, dates: sundayDates.sort() },
     });
   }
 
-  technicianRows.sort((a, b) => b.rate - a.rate);
+  // [FIX-SORT] Sort by consistencyScore — not raw rate.
+  // Raw rate alone let high-attendance ghost-heavy technicians rank first.
+  technicianRows.sort((a, b) => b.consistencyScore - a.consistencyScore);
   return technicianRows;
 }
 
@@ -325,8 +342,6 @@ function computeGhostList(technicianRows, attendance, entries) {
 }
 
 // ── Branch summary ─────────────────────────────────────────────────────
-// Single source of truth for branch-level KPI roll-ups — used by both
-// buildBranchView and buildSuperadminView to keep ghostRate consistent.
 function computeBranchSummary(branch, technicianRows, sundayShiftsTotal) {
   const totalTechs      = technicianRows.length;
   const totalRate       = totalTechs
@@ -339,18 +354,16 @@ function computeBranchSummary(branch, technicianRows, sundayShiftsTotal) {
 
   return {
     branch,
-    totalTechnicians:    totalTechs,
-    attendanceRate:      totalRate,
+    totalTechnicians:     totalTechs,
+    attendanceRate:       totalRate,
     ghostAttendanceCount: totalGhostDays,
-    ghostRate:           Math.round(ghostRate * 100),
+    ghostRate:            Math.round(ghostRate * 100),
     productiveScore,
     sundayShiftsTotal,
   };
 }
 
 // ── Synchronous dip detection (Mon–Sat only) ───────────────────────────
-// threshold >= 2: a single-branch dip is not "synchronous" — already
-// visible in that branch's own trend.
 function computeSynchronousDips(branchTrends) {
   const branchNames = Object.keys(branchTrends);
   if (branchNames.length < 2) return [];
@@ -388,8 +401,8 @@ function computeSynchronousDips(branchTrends) {
 // ── Heatmap color band ─────────────────────────────────────────────────
 function heatBand(rate) {
   if (rate >= 90) return "green";
-  if (rate >= 80) return "blue";
-  if (rate >= 70) return "amber";
+  if (rate >= 75) return "blue";
+  if (rate >= 60) return "amber";
   return "red";
 }
 
@@ -397,7 +410,7 @@ function heatBand(rate) {
 async function buildBranchView(branch, from, elapsedTo, workingDays) {
   const { technicians, attendance, entries } = await fetchBranchSlice(branch, from, elapsedTo);
 
-  const technicianRows     = computeTechnicianStats(technicians, attendance, entries, workingDays.length);
+  const technicianRows       = computeTechnicianStats(technicians, attendance, entries, workingDays.length);
   const { dailyTrend, dayOfWeekPattern } = computeDailyTrendAndDow(attendance, technicians.length, workingDays);
   const markTimeDistribution = computeMarkTimeDistribution(attendance, technicians);
   const ghostAttendance      = computeGhostList(technicianRows, attendance, entries);
@@ -412,7 +425,7 @@ async function buildBranchView(branch, from, elapsedTo, workingDays) {
   ).length;
 
   return {
-    scope:   "branch",   // shape discriminator — frontend uses this to guard renders
+    scope:   "branch",
     branch,
     month:            isoDateStr(from).slice(0, 7),
     workingDaysSoFar: workingDays.length,
@@ -430,15 +443,12 @@ async function buildBranchView(branch, from, elapsedTo, workingDays) {
     markTimeDistribution,
     technicians: technicianRows,
     ghostAttendance,
-    _summary:    summary,    // internal — used by buildSuperadminView, stripped before response
-    _dailyTrend: dailyTrend, // internal — used for dip detection, stripped before response
+    _summary:    summary,
+    _dailyTrend: dailyTrend,
   };
 }
 
 // ── Superadmin cross-branch view ───────────────────────────────────────
-// Promise.allSettled: one failing branch never crashes the whole view.
-// Failed branches are logged server-side and a warning is surfaced to the
-// client via partialDataWarning — other branches still render normally.
 async function buildSuperadminView(from, elapsedTo, workingDays) {
   const settled = await Promise.allSettled(
     VALID_BRANCHES.map((branch) => buildBranchView(branch, from, elapsedTo, workingDays))
@@ -458,7 +468,6 @@ async function buildSuperadminView(from, elapsedTo, workingDays) {
 
   const validViews = branchViewsArray.filter(Boolean);
 
-  // Index by name for O(1) dip-detection lookup below
   const branchViews = {};
   VALID_BRANCHES.forEach((b, i) => {
     if (branchViewsArray[i]) branchViews[b] = branchViewsArray[i];
@@ -476,13 +485,12 @@ async function buildSuperadminView(from, elapsedTo, workingDays) {
   const branchTrendsForDips = {};
   for (const b of Object.keys(branchViews)) branchTrendsForDips[b] = branchViews[b].dailyTrend;
 
-  // Only run dip detection when >= 2 branches have data (requires cross-branch comparison)
   const synchronousDips = Object.keys(branchViews).length >= 2
     ? computeSynchronousDips(branchTrendsForDips)
     : [];
 
   return {
-    scope:            "all",   // shape discriminator — frontend uses this to guard renders
+    scope:            "all",
     month:            isoDateStr(from).slice(0, 7),
     workingDaysSoFar: workingDays.length,
     branches,
@@ -494,7 +502,7 @@ async function buildSuperadminView(from, elapsedTo, workingDays) {
   };
 }
 
-// ── Controller entry point ─────────────────────────────────────────────
+// ── Controller: analytics ──────────────────────────────────────────────
 const getAttendanceAnalytics = async (req, res) => {
   try {
     const isSuperAdmin    = req.user.role === "superadmin";
@@ -534,4 +542,62 @@ const getAttendanceAnalytics = async (req, res) => {
   }
 };
 
-module.exports = { getAttendanceAnalytics };
+// ── Controller: export ─────────────────────────────────────────────────
+// [NEW-EXPORT]
+// Branch-scoped only — "all" is explicitly rejected.
+// Rationale: consistent with exportVehicleLogs and exportTechnicianData.
+// Superadmin selects a branch pill first, then exports that branch.
+//
+// No cache — exports always get fresh data. An admin should never
+// download a CSV that's 60 seconds stale without knowing it.
+//
+// Returns the full technicians array including markBuckets so the
+// client can build a detailed CSV without a second request.
+const getAttendanceExport = async (req, res) => {
+  try {
+    const isSuperAdmin    = req.user.role === "superadmin";
+    const requestedBranch = req.query.branch && req.query.branch !== "all"
+      ? req.query.branch
+      : null;
+    const branch = isSuperAdmin ? requestedBranch : req.user.branch;
+
+    if (!branch) {
+      return res.status(400).json({
+        message: "A specific branch is required for export. Select a branch from the filter first.",
+      });
+    }
+    if (!VALID_BRANCHES.includes(branch)) {
+      return res.status(400).json({ message: "Unknown branch." });
+    }
+
+    // Branch admin scope guard — mirrors adminController pattern
+    if (!isSuperAdmin && branch !== req.user.branch) {
+      return res.status(403).json({
+        message: "Access denied: you can only export your own branch.",
+      });
+    }
+
+    const { from, elapsedTo } = currentMonthRange();
+    const workingDays = allDaysSoFar(from, elapsedTo).filter(isWorkingDay);
+
+    // No cache wrapper — always fresh
+    const { technicians, attendance, entries } = await fetchBranchSlice(branch, from, elapsedTo);
+    const technicianRows = computeTechnicianStats(technicians, attendance, entries, workingDays.length);
+
+    const now = new Date();
+    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+    return res.json({
+      branch,
+      month,
+      workingDaysSoFar: workingDays.length,
+      technicians:      technicianRows,
+      totalCount:       technicianRows.length,
+    });
+  } catch (err) {
+    console.error("getAttendanceExport error:", err);
+    return res.status(500).json({ message: "Failed to export attendance data." });
+  }
+};
+
+module.exports = { getAttendanceAnalytics, getAttendanceExport };
