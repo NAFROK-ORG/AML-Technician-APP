@@ -31,13 +31,54 @@ const fmtTrendDate = (dateStr, range) => {
   return String(d.getUTCDate());
 };
 
+/* ─── CSV export helpers ──────────────────────────────────────────────
+   Backend returns JSON ({ rows, totalCount, truncated, branch, month }).
+   CSV is built client-side — consistent with exportTechnicianData's
+   existing convention in this codebase.
+
+   escapeCsvField: RFC 4180 — wraps in double-quotes if the value
+     contains a comma, double-quote, or newline; doubles any internal
+     double-quotes. Vehicle numbers and branch codes are plain ASCII so
+     this will almost never fire, but it's cheaper to have it than to
+     debug one edge case six months from now.
+
+   toDisplayDate: converts "YYYY-MM-DD" → "DD-MM-YYYY" for the
+     exported file. en-IN regional convention. UTC-bucketed source, so
+     no timezone shift happens here — same date value the dashboard
+     displays.
+
+   buildCsv: header row + one row per log, CRLF line endings (RFC 4180).
+     "\uFEFF" BOM is prepended at the call site so Excel on Windows
+     doesn't garble the file on open.
+─────────────────────────────────────────────────────────────────────── */
+const escapeCsvField = (value) => {
+  const str = String(value ?? "");
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+};
+const toDisplayDate = (isoDate) => {
+  const [y, m, d] = isoDate.split("-");
+  return `${d}-${m}-${y}`;
+};
+const buildCsv = (rows) => {
+  const lines = [["Date", "Vehicle", "Branch", "Status"].join(",")];
+  for (const row of rows) {
+    lines.push([
+      escapeCsvField(toDisplayDate(row.date)),
+      escapeCsvField(row.vehicle),
+      escapeCsvField(row.branch),
+      escapeCsvField(row.status),
+    ].join(","));
+  }
+  return lines.join("\r\n");
+};
+
 /* ─── Injected styles ──────────────────────────────────────────────
    KPI grid uses a real `gap` + per-card border instead of the
    background-through-gap trick — that trick is what produced the
    stray colored cells in AdminAnalytics when card count didn't divide
    evenly into the column count. Real borders mean an incomplete last
    row just looks like a shorter row, at any card count, any breakpoint.
-─────────────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────────────── */
 const VA_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
@@ -109,6 +150,53 @@ const VA_STYLES = `
     font-family: 'IBM Plex Sans', sans-serif;
     margin-right: 4px;
     flex-shrink: 0;
+  }
+
+  .va-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    background: transparent;
+    border: 1px solid #1E3A8A;
+    color: #1E3A8A;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .va-export-btn:hover:not(:disabled) { background: #1E3A8A; color: #FFFFFF; }
+  .va-export-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .va-export-btn svg { flex-shrink: 0; display: block; }
+
+  .va-export-spinner {
+    width: 11px; height: 11px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  /* Error: hard failure — red */
+  .va-export-error {
+    font-size: 10px;
+    font-weight: 600;
+    color: #DC2626;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  /* Notice: soft info (e.g. truncation warning, empty month) — amber */
+  .va-export-notice {
+    font-size: 10px;
+    font-weight: 600;
+    color: #D97706;
+    font-family: 'IBM Plex Sans', sans-serif;
   }
 
   .va-chart-h260 { height: 260px; }
@@ -206,6 +294,7 @@ const VA_STYLES = `
     .va-chart-h160 { height: 130px; }
     .va-range-tab { padding: 8px 10px; font-size: 9px; }
     .va-insight-strip { flex-direction: column; align-items: flex-start; }
+    .va-export-btn { padding: 0 12px; font-size: 9px; }
   }
 
   @media (max-width: 420px) {
@@ -288,6 +377,17 @@ export default function VehicleAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // CSV export — deliberately separate from `range`/`loading`/`error` above.
+  // The export always covers the current calendar month to date regardless
+  // of which range tab is active on screen; it has its own loading + error
+  // state so a slow/failed export never disrupts the charts already rendered.
+  //
+  // exportError  — hard failure (network error, server 500): red, retry prompt.
+  // exportNotice — soft info (truncation cap hit, empty month): amber, no action needed.
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportNotice, setExportNotice] = useState("");
+
   const abortRef = useRef(null);
 
   useEffect(() => {
@@ -320,8 +420,6 @@ export default function VehicleAnalytics() {
   useEffect(() => { fetchAnalytics(range, branch); }, [range, branch, fetchAnalytics]);
 
   // Live polling — "today" only, paused when the tab is hidden.
-  // Mirrors VehicleLogBoard's exact pattern; week/month are report-style
-  // views where re-fetching without user action isn't worth the request.
   useEffect(() => {
     if (range !== "today") return;
     const id = setInterval(() => {
@@ -330,6 +428,70 @@ export default function VehicleAnalytics() {
     return () => clearInterval(id);
   }, [range, branch, fetchAnalytics]);
 
+  // ── CSV export ─────────────────────────────────────────────────────────────
+  // Backend returns JSON ({ rows, totalCount, truncated, branch, month }).
+  // CSV is built here, client-side, matching the existing exportTechnicianData
+  // convention (JSON from server → CSV string in browser → Blob download).
+  //
+  // Do NOT restore responseType: "blob" here — the endpoint returns res.json(),
+  // not a file stream. Axios with responseType: "blob" does not throw; it just
+  // wraps the JSON string in a Blob, and the user gets a .csv file containing
+  // raw JSON text. Silent failure, no error surface, wrong output.
+  // ──────────────────────────────────────────────────────────────────────────
+  const handleExportCSV = async () => {
+    setExporting(true);
+    setExportError("");
+    setExportNotice("");
+    try {
+      const params = {};
+      if (isSuperAdmin && branch) params.branch = branch;
+
+      // Default Axios responseType (JSON) — backend sends { rows, totalCount,
+      // truncated, branch, month }. No responseType override needed.
+      const res = await api.get("/api/admin/analytics/vehicle/export", { params });
+      const { rows, totalCount, truncated, branch: respBranch, month } = res.data;
+
+      if (rows.length === 0) {
+        setExportNotice("No vehicle logs found for this month.");
+        return;
+      }
+
+      // Build CSV string and trigger download.
+      // "\uFEFF" BOM prefix: Excel on Windows opens UTF-8 CSVs without
+      // garbling if the BOM is present. Vehicle numbers/branches are plain
+      // ASCII here so it's a no-op in practice, but costs nothing.
+      const csv = buildCsv(rows);
+      const blobUrl = window.URL.createObjectURL(
+        new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+      );
+
+      // Filename uses the branch and month values the server resolved —
+      // more reliable than recomputing them client-side, since the server
+      // knows the exact scope of what it filtered.
+      const branchLabel = respBranch && respBranch !== "all" ? respBranch : "all-branches";
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `vehicle-logs_${branchLabel}_${month}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      // Show truncation notice if the export cap was hit. Not an error —
+      // the file is valid and complete up to the cap — but worth surfacing
+      // so an admin knows the file is a subset, not the full month.
+      if (truncated) {
+        setExportNotice(
+          `Exported ${rows.length.toLocaleString("en-IN")} of ${totalCount.toLocaleString("en-IN")} records (export cap reached). Oldest entries were excluded.`
+        );
+      }
+    } catch (err) {
+      setExportError("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const s = data?.summary;
   const opHours = data?.peakHours?.filter((h) => h.hour >= 6 && h.hour <= 20) || [];
   const peakHour = opHours.length > 0
@@ -337,7 +499,7 @@ export default function VehicleAnalytics() {
     : { count: 0, label: "—" };
   const peakDay = data?.peakDays?.reduce((max, d) => (d.count > max.count ? d : max), { count: 0, dayName: "—" });
   const fastPct = s?.assigned > 0 ? Math.round((data.responseDist.fast / s.assigned) * 100) : 0;
-  const bestBranch = data?.byBranch?.filter((b) => b.logged > 0).sort((a, b) => b.assignmentRate - a.assignmentRate)[0];
+  const bestBranch = data?.byBranch?.filter((br) => br.logged > 0).sort((a, br) => br.assignmentRate - a.assignmentRate)[0];
   const distData = data ? [
     { name: "Fast", label: "< 30 min", value: data.responseDist.fast, fill: "#3B6D11" },
     { name: "Normal", label: "30–60 min", value: data.responseDist.normal, fill: "#BA7517" },
@@ -371,7 +533,8 @@ export default function VehicleAnalytics() {
           </div>
         </div>
 
-        <div className="va-a2" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px", background: C.card, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.navy}`, padding: "12px 18px" }}>
+        {/* ── Filter bar + Export button ──────────────────────────────────── */}
+        <div className="va-a2" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px", background: C.card, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.navy}`, padding: "12px 18px", flexWrap: "wrap" }}>
           {isSuperAdmin && (
             <>
               <span className="va-filter-label">Branch</span>
@@ -390,6 +553,33 @@ export default function VehicleAnalytics() {
               </div>
             </>
           )}
+
+          {/* Export button — reuses the branch state already tracked above.
+              Superadmin: branch dropdown doubles as the export scope picker.
+              Admin: branch is locked server-side, button exports their own branch.
+              Always exports the current calendar month, independent of range tabs. */}
+          <button
+            className="va-export-btn"
+            onClick={handleExportCSV}
+            disabled={exporting}
+            title={`Download ${isBranchAdmin ? (user?.branch || "branch") : (branch || "all branches")} vehicle gate log — current calendar month, as CSV`}
+          >
+            {exporting ? (
+              <span className="va-export-spinner" />
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1.5v8.2M8 9.7L4.6 6.3M8 9.7l3.4-3.4M2.5 12v1.2A1.8 1.8 0 0 0 4.3 15h7.4a1.8 1.8 0 0 0 1.8-1.8V12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+            {exporting ? "Preparing…" : "Export CSV · This Month"}
+          </button>
+
+          {/* Error (hard failure) and Notice (soft info) are mutually exclusive
+              in practice — an error clears the notice and vice versa — but
+              rendered separately so their colors are distinct. */}
+          {exportError && <span className="va-export-error">{exportError}</span>}
+          {exportNotice && <span className="va-export-notice">{exportNotice}</span>}
+
           {!loading && data && (
             <span style={{ marginLeft: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: C.dim, letterSpacing: "0.04em" }}>
               {rangeLabelMap[range]}{isBranchAdmin ? ` · ${user?.branch}` : branch ? ` · ${branch}` : " · All Branches"}
