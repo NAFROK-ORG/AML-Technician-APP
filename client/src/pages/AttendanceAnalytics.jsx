@@ -31,11 +31,14 @@ const STATUS_COLOR = {
   Critical:  C.danger,
 };
 
+// [FIX-HEATMAP] Red threshold moved from 70% → 60%.
+// Updated in backend heatBand() too — both sides must stay in sync.
+// Legend labels updated below to match.
 const heatColor = (rate) => {
-  if (rate >= 90) return "#16A34A";
-  if (rate >= 80) return "#1E3A8A";
-  if (rate >= 70) return "#D97706";
-  return "#DC2626";
+  if (rate >= 90) return "#16A34A"; // green   — excellent
+  if (rate >= 75) return "#1E3A8A"; // navy    — good
+  if (rate >= 60) return "#D97706"; // amber   — at risk
+  return "#DC2626";                 // red     — below 60%
 };
 
 const monthLabel = () =>
@@ -46,6 +49,53 @@ const monthLabel = () =>
 const fmtDate = (iso) => {
   const [, m, d] = iso.split("-").map(Number);
   return `${d}/${m}`;
+};
+
+// ─── CSV helpers ───────────────────────────────────────────────────────────────
+// Mirrors the escapeCsvField / buildCsv pattern from VehicleAnalytics —
+// one convention for CSV output across the whole app.
+const escapeCsv = (v) => {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+// Columns exported:
+//   Name | ID | Type | Days Present | Working Days (MTD) | Attendance Rate %
+//   Ghost Days | Before 8AM | 8–9 AM | 9–10 AM | After 10AM
+//   Avg Mark Time | Sunday Shifts | Consistency % | Status
+//
+// markBuckets come from the backend (added in this version of the controller).
+// If a row lacks markBuckets (e.g. old cached response), each bucket falls back
+// to 0 safely via the ?? operator — no crash, just empty columns.
+const buildAttendanceCsv = (rows) => {
+  const headers = [
+    "Name", "Technician ID", "Type",
+    "Days Present", "Working Days (MTD)", "Attendance Rate %",
+    "Ghost Days",
+    "Before 8AM", "8–9 AM", "9–10 AM", "After 10AM",
+    "Avg Mark Time", "Sunday Shifts", "Consistency %", "Status",
+  ];
+  const lines = [headers.join(",")];
+  for (const t of rows) {
+    lines.push([
+      escapeCsv(t.name),
+      escapeCsv(t.technicianId   || ""),
+      escapeCsv(t.technicianType || ""),
+      escapeCsv(t.daysPresent),
+      escapeCsv(t.workingDays),
+      escapeCsv(t.rate),
+      escapeCsv(t.ghostDays),
+      escapeCsv(t.markBuckets?.before8 ?? 0),
+      escapeCsv(t.markBuckets?.am8to9  ?? 0),
+      escapeCsv(t.markBuckets?.am9to10 ?? 0),
+      escapeCsv(t.markBuckets?.after10 ?? 0),
+      escapeCsv(t.avgMarkTime          || ""),
+      escapeCsv(t.sundayShifts?.count  ?? 0),
+      escapeCsv(t.consistencyScore),
+      escapeCsv(t.status),
+    ].join(","));
+  }
+  return lines.join("\r\n");
 };
 
 // ─── KPI strip ────────────────────────────────────────────────────────────────
@@ -96,6 +146,7 @@ function KpiStrip({ kpis }) {
 }
 
 // ─── Daily trend — inline SVG bar chart ──────────────────────────────────────
+// [FIX-HEATMAP] Danger threshold updated from 70 → 60 to match heatColor.
 function DailyTrendChart({ dailyTrend }) {
   if (!dailyTrend.length) return null;
   const W = 700, H = 140, padBottom = 18, barGap = 3;
@@ -112,12 +163,12 @@ function DailyTrendChart({ dailyTrend }) {
           const barH = Math.max(2, ((H - padBottom) * d.rate) / 100);
           const x    = i * (barW + barGap);
           const y    = H - padBottom - barH;
-          const fill = d.rate < 70 ? C.danger : C.navy;
+          const fill = d.rate < 60 ? C.danger : C.navy; // [FIX-HEATMAP] was < 70
           return (
             <g key={d.date}>
               <rect
                 x={x} y={y} width={barW} height={barH}
-                fill={fill} rx="1" opacity={d.rate < 70 ? 1 : 0.85}
+                fill={fill} rx="1" opacity={d.rate < 60 ? 1 : 0.85}
               >
                 <title>{`${fmtDate(d.date)} · ${d.present}/${d.total} present · ${d.rate}%`}</title>
               </rect>
@@ -131,7 +182,7 @@ function DailyTrendChart({ dailyTrend }) {
       </svg>
       <div className="ata-legend">
         <span><i style={{ background: C.navy }} /> normal</span>
-        <span><i style={{ background: C.danger }} /> below 70%</span>
+        <span><i style={{ background: C.danger }} /> below 60%</span>{/* [FIX-HEATMAP] was 70% */}
       </div>
     </div>
   );
@@ -166,26 +217,141 @@ function DayOfWeekChart({ dayOfWeekPattern }) {
 }
 
 // ─── Mark-time distribution ───────────────────────────────────────────────────
+// [FIX-MARKTIME] Complete redesign.
+//
+// Before: lateFlags was rendered as a single .join(" · ") string — dumped
+//         into a <div> as a paragraph. With 20+ names it became unreadable.
+//
+// After:  Distribution bars are color-coded per bucket severity.
+//         Percentage labels added alongside counts.
+//         Late flags rendered as a proper striped row list — one row per
+//         technician, name left-aligned, badge right-aligned. Scannable
+//         at a glance even with 30+ entries.
+//
+// LATE_FLAG_THRESHOLD = 3 (matches backend constant — must stay in sync
+// if the backend constant ever changes).
+const LATE_FLAG_THRESHOLD_DISPLAY = 3;
+
+const BUCKET_META = {
+  "Before 8AM": { color: "#16A34A", label: "Early"     },
+  "8–9 AM":     { color: "#1E3A8A", label: "On time"   },
+  "9–10 AM":    { color: "#D97706", label: "Late"       },
+  "After 10AM": { color: "#DC2626", label: "Very late"  },
+};
+
 function MarkTimeChart({ markTimeDistribution }) {
   const { distribution, lateFlags } = markTimeDistribution;
-  const max = Math.max(...distribution.map((d) => d.count), 1);
+  const max   = Math.max(...distribution.map((d) => d.count), 1);
+  const total = distribution.reduce((s, d) => s + d.count, 0);
 
   return (
     <div className="ata-card">
       <div className="ata-card-title">Mark time distribution (IST)</div>
-      {distribution.map((d) => (
-        <div key={d.bucket} className="ata-hist-row">
-          <span className="ata-hist-label">{d.bucket}</span>
-          <div className="ata-hist-track">
-            <div className="ata-hist-fill" style={{ width: `${(d.count / max) * 100}%` }} />
-          </div>
-          <span className="ata-hist-count">{d.count}</span>
-        </div>
-      ))}
+
+      {/* ── Distribution bars ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: lateFlags.length ? "16px" : 0 }}>
+        {distribution.map((d) => {
+          const meta = BUCKET_META[d.bucket] || { color: C.navy, label: "" };
+          const pct  = total > 0 ? Math.round((d.count / total) * 100) : 0;
+          return (
+            <div key={d.bucket} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Bucket label — fixed width so bars all start at the same X */}
+              <span style={{
+                fontSize: "11px", fontWeight: 600, color: C.mid,
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                width: "78px", flexShrink: 0, textAlign: "right",
+                letterSpacing: "0.01em",
+              }}>
+                {d.bucket}
+              </span>
+
+              {/* Bar track */}
+              <div style={{
+                flex: 1, height: "16px", background: C.borderL, position: "relative",
+                border: `1px solid ${C.border}`,
+              }}>
+                <div style={{
+                  position: "absolute", left: 0, top: 0, bottom: 0,
+                  width: `${(d.count / max) * 100}%`,
+                  background: meta.color,
+                  opacity: 0.85,
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
+
+              {/* Count */}
+              <span style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "12px", fontWeight: 700,
+                color: meta.color, width: "28px", textAlign: "right",
+                flexShrink: 0,
+              }}>
+                {d.count}
+              </span>
+
+              {/* Percentage */}
+              <span style={{
+                fontSize: "10px", color: C.dim,
+                width: "34px", flexShrink: 0,
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}>
+                {pct}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Late flags table ── */}
       {lateFlags.length > 0 && (
-        <div className="ata-flag-text" style={{ marginTop: "10px" }}>
-          ⚠ {lateFlags.map((f) => `${f.name} (${f.lateDays}d after 10AM)`).join(" · ")}
-        </div>
+        <>
+          {/* Divider */}
+          <div style={{ height: "1px", background: C.border, margin: "4px 0 12px" }} />
+
+          <div style={{
+            fontSize: "9px", fontWeight: 700, letterSpacing: "0.16em",
+            textTransform: "uppercase", color: C.amber, marginBottom: "8px",
+            display: "flex", alignItems: "center", gap: "6px",
+          }}>
+            ⚠ After-10AM flags — marked late on ≥{LATE_FLAG_THRESHOLD_DISPLAY} days
+          </div>
+
+          {/* Striped rows — name | late-days badge */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            {lateFlags.map((f, i) => (
+              <div
+                key={f.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "6px 10px",
+                  background: i % 2 === 0 ? C.cardAlt : C.card,
+                  border: `1px solid ${C.borderL}`,
+                }}
+              >
+                <span style={{
+                  fontSize: "12px", color: C.mid,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                  fontWeight: 500,
+                }}>
+                  {f.name}
+                </span>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: "11px", fontWeight: 700,
+                  color: "#92400E",
+                  background: "#FEF3C7",
+                  border: "1px solid #FCD34D",
+                  padding: "2px 8px",
+                  whiteSpace: "nowrap",
+                }}>
+                  {f.lateDays}d
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -218,11 +384,14 @@ function GhostPanel({ ghostAttendance }) {
 }
 
 // ─── Technician table ─────────────────────────────────────────────────────────
+// [FIX-SORT] Title updated to "sorted by consistency" — matches backend sort.
+// [FIX-DAYS] Days column shows fraction + mini colour bar so rate is
+//            visible without reading the Rate % column separately.
 function TechnicianTable({ technicians }) {
   return (
     <div className="ata-card" style={{ padding: 0 }}>
       <div className="ata-card-title" style={{ padding: "16px 16px 0" }}>
-        Technician breakdown · sorted by rate
+        Technician breakdown · sorted by consistency
       </div>
       <div className="ata-table-scroll">
         <table className="ata-table">
@@ -240,41 +409,71 @@ function TechnicianTable({ technicians }) {
             </tr>
           </thead>
           <tbody>
-            {technicians.map((t) => (
-              <tr key={t.id}>
-                <td>
-                  <div className="ata-tech-name">{t.name}</div>
-                  <div className="ata-tech-id">{t.technicianId || "—"}</div>
-                </td>
-                <td className="ata-dim">{t.technicianType || "—"}</td>
-                <td>{t.daysPresent}/{t.workingDays}</td>
-                <td style={{ fontWeight: 700 }}>{t.rate}%</td>
-                <td className="ata-dim">{t.avgMarkTime || "—"}</td>
-                <td>
-                  {t.ghostDays > 0
-                    ? <span className="ata-badge ata-badge-warn">{t.ghostDays}</span>
-                    : <span className="ata-dim">0</span>}
-                </td>
-                <td className="ata-dim">
-                  {t.sundayShifts?.count > 0
-                    ? <span className="ata-badge ata-badge-sun">{t.sundayShifts.count}</span>
-                    : "—"}
-                </td>
-                <td className="ata-dim">{t.consistencyScore}%</td>
-                <td>
-                  <span
-                    className="ata-badge"
-                    style={{
-                      color:      STATUS_COLOR[t.status],
-                      background: `${STATUS_COLOR[t.status]}1A`,
-                      border:     `1px solid ${STATUS_COLOR[t.status]}55`,
-                    }}
-                  >
-                    {t.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {technicians.map((t) => {
+              // Mini bar colour mirrors the heatColor thresholds
+              const barColor = t.rate >= 75 ? C.success : t.rate >= 60 ? C.amber : C.danger;
+              const barPct   = t.workingDays > 0
+                ? Math.round((t.daysPresent / t.workingDays) * 100)
+                : 0;
+
+              return (
+                <tr key={t.id}>
+                  <td>
+                    <div className="ata-tech-name">{t.name}</div>
+                    <div className="ata-tech-id">{t.technicianId || "—"}</div>
+                  </td>
+                  <td className="ata-dim">{t.technicianType || "—"}</td>
+
+                  {/* [FIX-DAYS] Fraction + mini progress bar */}
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span style={{
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: "12px", fontWeight: 700, color: C.ink,
+                        whiteSpace: "nowrap",
+                      }}>
+                        {t.daysPresent}
+                        <span style={{ color: C.dim, fontWeight: 400 }}>/{t.workingDays}</span>
+                      </span>
+                      {/* Mini bar — 48 px wide, 3 px tall */}
+                      <div style={{ width: "48px", height: "3px", background: C.borderL }}>
+                        <div style={{
+                          height: "100%", width: `${barPct}%`,
+                          background: barColor,
+                          transition: "width 0.4s ease",
+                        }} />
+                      </div>
+                    </div>
+                  </td>
+
+                  <td style={{ fontWeight: 700 }}>{t.rate}%</td>
+                  <td className="ata-dim">{t.avgMarkTime || "—"}</td>
+                  <td>
+                    {t.ghostDays > 0
+                      ? <span className="ata-badge ata-badge-warn">{t.ghostDays}</span>
+                      : <span className="ata-dim">0</span>}
+                  </td>
+                  <td className="ata-dim">
+                    {t.sundayShifts?.count > 0
+                      ? <span className="ata-badge ata-badge-sun">{t.sundayShifts.count}</span>
+                      : "—"}
+                  </td>
+                  <td className="ata-dim">{t.consistencyScore}%</td>
+                  <td>
+                    <span
+                      className="ata-badge"
+                      style={{
+                        color:      STATUS_COLOR[t.status],
+                        background: `${STATUS_COLOR[t.status]}1A`,
+                        border:     `1px solid ${STATUS_COLOR[t.status]}55`,
+                      }}
+                    >
+                      {t.status}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -282,8 +481,58 @@ function TechnicianTable({ technicians }) {
   );
 }
 
-// ─── Branch-scoped view ────────────────────────────────────────────────────────
+// ─── Branch-scoped view ───────────────────────────────────────────────────────
+// [NEW-EXPORT] Export button added to the top-right header area.
+// State is local to BranchAnalyticsView — the export is a self-contained
+// action and doesn't need to bubble up to the page-level component.
+//
+// Export endpoint: GET /api/admin/analytics/attendance/export?branch=<BRANCH>
+// Response:  { branch, month, workingDaysSoFar, technicians[], totalCount }
+// CSV built client-side from response — consistent with exportTechnicianData
+// and exportVehicleLogs conventions in this codebase.
+//
+// exportError  → hard failure (network / 500), shown in red
+// exportNotice → soft info (empty branch), shown in amber
+// Both clear on the next export attempt.
 function BranchAnalyticsView({ data }) {
+  const [exporting,     setExporting]     = useState(false);
+  const [exportError,   setExportError]   = useState("");
+  const [exportNotice,  setExportNotice]  = useState("");
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    setExportError("");
+    setExportNotice("");
+
+    try {
+      const res = await api.get("/api/admin/analytics/attendance/export", {
+        params: { branch: data.branch },
+      });
+      const { technicians, branch, month } = res.data;
+
+      if (!technicians.length) {
+        setExportNotice("No technician data found for this month.");
+        return;
+      }
+
+      const csv     = buildAttendanceCsv(technicians);
+      const blobUrl = window.URL.createObjectURL(
+        new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+      );
+      const link = document.createElement("a");
+      link.href     = blobUrl;
+      link.download = `attendance_${branch}_${month}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      setExportError("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (data.totalTechnicians === 0) {
     return (
       <div className="ata-card">
@@ -312,7 +561,161 @@ function BranchAnalyticsView({ data }) {
         <GhostPanel ghostAttendance={data.ghostAttendance} />
         <MarkTimeChart markTimeDistribution={data.markTimeDistribution} />
       </div>
-      <TechnicianTable technicians={data.technicians} />
+
+      {/* ── Technician table + export ── */}
+      <div className="ata-card" style={{ padding: 0 }}>
+        {/* Card header row — title left, export button right */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 16px 0", flexWrap: "wrap", gap: "10px",
+        }}>
+          <div style={{
+            fontSize: "9px", fontWeight: 700, letterSpacing: "0.2em",
+            textTransform: "uppercase", color: C.muted,
+            fontFamily: "'IBM Plex Sans', sans-serif",
+          }}>
+            Technician breakdown · sorted by consistency
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {exportError  && <span style={{ fontSize: "10px", fontWeight: 600, color: C.danger }}>{exportError}</span>}
+            {exportNotice && <span style={{ fontSize: "10px", fontWeight: 600, color: C.amber }}>{exportNotice}</span>}
+
+            <button
+              onClick={handleExportCSV}
+              disabled={exporting}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                height: "32px", padding: "0 14px",
+                background: "transparent", border: `1px solid ${C.navy}`,
+                color: C.navy,
+                fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                cursor: exporting ? "not-allowed" : "pointer",
+                opacity: exporting ? 0.55 : 1,
+                transition: "background 0.15s, color 0.15s",
+                WebkitTapHighlightColor: "transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (!exporting) {
+                  e.currentTarget.style.background = C.navy;
+                  e.currentTarget.style.color = "#fff";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = C.navy;
+              }}
+              title={`Download ${data.branch} attendance — current month, as CSV`}
+            >
+              {exporting ? (
+                <span style={{
+                  width: "10px", height: "10px",
+                  border: `1.5px solid currentColor`,
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "ata-spin 0.7s linear infinite",
+                  flexShrink: 0,
+                  display: "inline-block",
+                }} />
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 1.5v8.2M8 9.7L4.6 6.3M8 9.7l3.4-3.4M2.5 12v1.2A1.8 1.8 0 0 0 4.3 15h7.4a1.8 1.8 0 0 0 1.8-1.8V12"
+                    stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+              {exporting ? "Preparing…" : "Export CSV · This Month"}
+            </button>
+          </div>
+        </div>
+
+        {/* Table — rendered directly here instead of TechnicianTable sub-component
+            so the header and table share the same ata-card container without
+            double-padding. TechnicianTable still used where there's no export btn. */}
+        <div className="ata-table-scroll">
+          <table className="ata-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Days</th>
+                <th>Rate</th>
+                <th>Avg Mark</th>
+                <th>Ghost</th>
+                <th>Sun</th>
+                <th>Consistency</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.technicians.map((t) => {
+                const barColor = t.rate >= 75 ? C.success : t.rate >= 60 ? C.amber : C.danger;
+                const barPct   = t.workingDays > 0
+                  ? Math.round((t.daysPresent / t.workingDays) * 100)
+                  : 0;
+
+                return (
+                  <tr key={t.id}>
+                    <td>
+                      <div className="ata-tech-name">{t.name}</div>
+                      <div className="ata-tech-id">{t.technicianId || "—"}</div>
+                    </td>
+                    <td className="ata-dim">{t.technicianType || "—"}</td>
+
+                    {/* [FIX-DAYS] Fraction + mini bar */}
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontSize: "12px", fontWeight: 700, color: C.ink,
+                          whiteSpace: "nowrap",
+                        }}>
+                          {t.daysPresent}
+                          <span style={{ color: C.dim, fontWeight: 400 }}>/{t.workingDays}</span>
+                        </span>
+                        <div style={{ width: "48px", height: "3px", background: C.borderL }}>
+                          <div style={{
+                            height: "100%", width: `${barPct}%`,
+                            background: barColor,
+                            transition: "width 0.4s ease",
+                          }} />
+                        </div>
+                      </div>
+                    </td>
+
+                    <td style={{ fontWeight: 700 }}>{t.rate}%</td>
+                    <td className="ata-dim">{t.avgMarkTime || "—"}</td>
+                    <td>
+                      {t.ghostDays > 0
+                        ? <span className="ata-badge ata-badge-warn">{t.ghostDays}</span>
+                        : <span className="ata-dim">0</span>}
+                    </td>
+                    <td className="ata-dim">
+                      {t.sundayShifts?.count > 0
+                        ? <span className="ata-badge ata-badge-sun">{t.sundayShifts.count}</span>
+                        : "—"}
+                    </td>
+                    <td className="ata-dim">{t.consistencyScore}%</td>
+                    <td>
+                      <span
+                        className="ata-badge"
+                        style={{
+                          color:      STATUS_COLOR[t.status],
+                          background: `${STATUS_COLOR[t.status]}1A`,
+                          border:     `1px solid ${STATUS_COLOR[t.status]}55`,
+                        }}
+                      >
+                        {t.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   );
 }
@@ -321,7 +724,6 @@ function BranchAnalyticsView({ data }) {
 function SuperadminAnalyticsView({ data, onDrillBranch }) {
   return (
     <>
-      {/* Partial-data warning — shown when one or more branches failed server-side */}
       {data.partialDataWarning && (
         <div className="ata-card" style={{ borderLeft: `3px solid ${C.amber}` }}>
           <p style={{ color: C.amber, fontWeight: 600, margin: 0, fontSize: "12px" }}>
@@ -341,10 +743,7 @@ function SuperadminAnalyticsView({ data, onDrillBranch }) {
             >
               <div className="ata-branch-rank">Rank #{b.rank}</div>
               <div className="ata-branch-name">{b.branch}</div>
-              <div
-                className="ata-branch-rate"
-                style={{ color: heatColor(b.attendanceRate) }}
-              >
+              <div className="ata-branch-rate" style={{ color: heatColor(b.attendanceRate) }}>
                 {b.attendanceRate}%
               </div>
               <div className="ata-branch-meta">
@@ -374,11 +773,12 @@ function SuperadminAnalyticsView({ data, onDrillBranch }) {
             ))}
           </div>
         </div>
+        {/* [FIX-HEATMAP] Legend updated to reflect new thresholds */}
         <div className="ata-legend" style={{ marginTop: "10px" }}>
           <span><i style={{ background: "#16A34A" }} /> ≥90%</span>
-          <span><i style={{ background: "#1E3A8A" }} /> 80–89%</span>
-          <span><i style={{ background: "#D97706" }} /> 70–79%</span>
-          <span><i style={{ background: "#DC2626" }} /> &lt;70%</span>
+          <span><i style={{ background: "#1E3A8A" }} /> 75–89%</span>
+          <span><i style={{ background: "#D97706" }} /> 60–74%</span>
+          <span><i style={{ background: "#DC2626" }} /> &lt;60%</span>
         </div>
       </div>
 
@@ -414,16 +814,8 @@ export default function AttendanceAnalytics() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
 
-  // ── CRASH FIX ────────────────────────────────────────────────────────────────
-  // Problem: when branchFilter changes, React re-renders *before* the useEffect
-  // re-runs fetchData. In that window, isAllBranchesView flips but `data` still
-  // holds the old shape — BranchAnalyticsView receives superadmin-shaped data
-  // (no kpis) and crashes, or vice versa.
-  //
-  // Fix: batch setData(null) + setLoading(true) with the filter change in a
-  // single synchronous call. React 18 automatic batching collapses all three
-  // setState calls into one re-render where data=null and loading=true, so the
-  // component renders the loading spinner instead of trying to render stale data.
+  // Batch all three state updates to avoid a render window where data shape
+  // mismatches the view — React 18 automatic batching collapses them to one.
   const changeBranchFilter = useCallback((branch) => {
     setData(null);
     setLoading(true);
@@ -443,7 +835,7 @@ export default function AttendanceAnalytics() {
       setError(
         err.response?.status === 403
           ? "Access denied: you do not have permission to view this data."
-          : "Failed to load attendance Analytics. Please try Again."
+          : "Failed to load attendance analytics. Please try again."
       );
     } finally {
       setLoading(false);
@@ -452,37 +844,24 @@ export default function AttendanceAnalytics() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Superadmin with no filter = all-branches view; everyone else = branch view
   const isAllBranchesView = isSuperAdmin && !branchFilter;
 
-  // Shape guard: only render a view when data matches the expected shape.
-  // This is a defense-in-depth layer; changeBranchFilter prevents the race
-  // condition, but this ensures a stale-shape data object is never passed
-  // to a component that would crash on it.
   const renderContent = () => {
     if (loading) {
       return (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div
-            style={{
-              width:        "28px",
-              height:       "28px",
-              border:       `2px solid ${C.border}`,
-              borderTop:    `2px solid ${C.navy}`,
-              borderRadius: "50%",
-              margin:       "0 auto 16px",
-              animation:    "ata-spin 0.8s linear infinite",
-            }}
-          />
-          <p
-            style={{
-              fontSize:      "10px",
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              fontWeight:    700,
-              color:         C.dim,
-            }}
-          >
+          <div style={{
+            width: "28px", height: "28px",
+            border: `2px solid ${C.border}`,
+            borderTop: `2px solid ${C.navy}`,
+            borderRadius: "50%",
+            margin: "0 auto 16px",
+            animation: "ata-spin 0.8s linear infinite",
+          }} />
+          <p style={{
+            fontSize: "10px", letterSpacing: "0.18em",
+            textTransform: "uppercase", fontWeight: 700, color: C.dim,
+          }}>
             Loading analytics…
           </p>
         </div>
@@ -500,65 +879,39 @@ export default function AttendanceAnalytics() {
     if (!data) return null;
 
     if (isAllBranchesView && data.scope === "all") {
-      return (
-        <SuperadminAnalyticsView
-          data={data}
-          onDrillBranch={changeBranchFilter}
-        />
-      );
+      return <SuperadminAnalyticsView data={data} onDrillBranch={changeBranchFilter} />;
     }
 
     if (!isAllBranchesView && data.scope === "branch") {
       return <BranchAnalyticsView data={data} />;
     }
 
-    // Shape mismatch — data is loading/transitioning; render nothing
+    // Shape mismatch — transitioning; render nothing (loading was already cleared)
     return null;
   };
 
   return (
-    <div
-      style={{
-        minHeight:  "100dvh",
-        background: C.pageBg,
-        fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
-      }}
-    >
+    <div style={{
+      minHeight: "100dvh", background: C.pageBg,
+      fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+    }}>
       <Navbar />
       <div style={{ maxWidth: "880px", margin: "0 auto", padding: "24px 16px 80px" }}>
 
         {/* ── Page header ── */}
-        <div
-          style={{
-            marginBottom:  "20px",
-            paddingBottom: "16px",
-            borderBottom:  `1px solid ${C.border}`,
-          }}
-        >
-          <div
-            style={{
-              fontSize:      "9px",
-              fontWeight:    700,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color:         C.navy,
-              marginBottom:  "4px",
-            }}
-          >
+        <div style={{ marginBottom: "20px", paddingBottom: "16px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{
+            fontSize: "9px", fontWeight: 700, letterSpacing: "0.2em",
+            textTransform: "uppercase", color: C.navy, marginBottom: "4px",
+          }}>
             {!isSuperAdmin ? `${user?.branch} · ` : ""}Attendance Analytics
           </div>
-          <h1
-            style={{
-              fontFamily:    "'Barlow Condensed', sans-serif",
-              fontSize:      "clamp(24px,6vw,36px)",
-              fontWeight:    700,
-              color:         C.ink,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              margin:        0,
-              lineHeight:    1,
-            }}
-          >
+          <h1 style={{
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: "clamp(24px,6vw,36px)", fontWeight: 700,
+            color: C.ink, letterSpacing: "0.04em",
+            textTransform: "uppercase", margin: 0, lineHeight: 1,
+          }}>
             {monthLabel()}
           </h1>
           <p style={{ fontSize: "11px", color: C.dim, margin: "8px 0 0" }}>
@@ -587,7 +940,6 @@ export default function AttendanceAnalytics() {
           </div>
         )}
 
-        {/* ── Content ── */}
         {renderContent()}
       </div>
     </div>
