@@ -6,7 +6,7 @@ const { writeAuditLog } = require("../utils/auditLogger");
 const { getOrSet } = require("../utils/cache");
 
 const { VALID_BRANCHES } = require("../utils/constants");
-
+const { utcMidnight, toISTHour } = require("../utils/timeUtils");
 const isBranchAdmin = (req) => req.user.role === "admin";
 const { normalizeVehicleNo } = require("../utils/vehicleUtils");
 
@@ -36,17 +36,6 @@ const parseMonthParam = (monthStr) => {
   return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UTILITY: utcMidnight — mirrors securityController.js exactly. Kept local
-// (not shared) to avoid a circular require between the two controllers. If
-// this ever drifts from securityController's version, that's a real bug —
-// they must stay byte-for-byte identical in behavior.
-// ─────────────────────────────────────────────────────────────────────────────
-function utcMidnight(input) {
-  const d = input ? new Date(input) : new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/branches  ← SUPERADMIN ONLY
@@ -766,6 +755,114 @@ const [overviewArr, byBranch, byCategory, byMonth, topTechs, vehicleLogCount, ve
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// linkLogsToEntries(allLogs, branchFilter, endDate)
+//
+// Extracted out of getVehicleAnalytics — lifted verbatim, not rewritten, so
+// behavior is provably unchanged for the existing caller. This is the SAME
+// partitioning algorithm documented in the project handbook's "Linking
+// Algorithm" section, including the cross-range fix for the last log per
+// vehicle in a window.
+//
+// Now shared by getVehicleAnalytics AND exportVehicleLogs. If this logic
+// ever needs a fix, it happens once, here — both callers get it
+// automatically. Do not let a third copy of this get hand-written
+// somewhere else; that's exactly the drift this extraction exists to
+// prevent.
+//
+// `endDate` is the exclusive upper bound of the window being analyzed — used
+// to find each vehicle's next visit AFTER the window, for the cross-range
+// check. `branchFilter` must be the same { branch } or {} object the caller
+// used to fetch `allLogs`.
+//
+// Returns: Map<logId(string), Entry[]> — entries linked to that specific log.
+// ─────────────────────────────────────────────────────────────────────────────
+const linkLogsToEntries = async (allLogs, branchFilter, endDate) => {
+  if (allLogs.length === 0) return new Map();
+
+  // ── Build logGroups: vehicleNoNorm|branch → SecurityLog[] (asc loggedAt) ─
+  // Assumes `allLogs` is sorted ascending by { vehicleNoNorm, loggedAt } —
+  // both current callers fetch it that way. If a future caller doesn't,
+  // this silently produces wrong groupings, so don't reorder allLogs
+  // before passing it in.
+  const logGroups = new Map();
+  let globalMinLoggedAt = Infinity;
+  for (const log of allLogs) {
+    const key = `${log.vehicleNoNorm}|${log.branch}`;
+    if (!logGroups.has(key)) logGroups.set(key, []);
+    logGroups.get(key).push(log);
+    const t = new Date(log.loggedAt).getTime();
+    if (t < globalMinLoggedAt) globalMinLoggedAt = t;
+  }
+
+  const vehicleNorms = [...new Set(allLogs.map((l) => l.vehicleNoNorm))];
+
+  // ── Cross-range next-log lookup — same fix as getBoardLogs's cross-date ─
+  const crossRangeNextLogDocs = await SecurityLog.aggregate([
+    {
+      $match: {
+        vehicleNoNorm: { $in: vehicleNorms },
+        ...branchFilter,
+        loggedAt: { $gte: endDate },
+      },
+    },
+    { $sort: { vehicleNoNorm: 1, branch: 1, loggedAt: 1 } },
+    {
+      $group: {
+        _id: { vehicleNoNorm: "$vehicleNoNorm", branch: "$branch" },
+        nextLoggedAt: { $first: "$loggedAt" },
+      },
+    },
+  ]);
+  const crossRangeNextMap = new Map();
+  for (const doc of crossRangeNextLogDocs) {
+    const key = `${doc._id.vehicleNoNorm}|${doc._id.branch}`;
+    crossRangeNextMap.set(key, new Date(doc.nextLoggedAt).getTime());
+  }
+
+  // ── Batch fetch Entries — no upper bound, same rationale as getBoardLogs ─
+  const entryFilter = {
+    vehicleNoNorm: { $in: vehicleNorms },
+    createdAt: { $gte: new Date(globalMinLoggedAt) },
+    ...branchFilter,
+  };
+  const allEntries = await Entry.find(entryFilter).sort({ createdAt: 1 }).lean();
+
+  // ── Partition — descending-scan per vehicle, same algorithm as before ───
+  const entryMap = new Map();
+  for (const entry of allEntries) {
+    const key = `${entry.vehicleNoNorm}|${entry.branch}`;
+    const logsForVehicle = logGroups.get(key);
+    if (!logsForVehicle) continue;
+    const entryTime = new Date(entry.createdAt).getTime();
+    for (let i = logsForVehicle.length - 1; i >= 0; i--) {
+      const logTime = new Date(logsForVehicle[i].loggedAt).getTime();
+      if (entryTime >= logTime) {
+        const intraRangeNextTime = i + 1 < logsForVehicle.length
+          ? new Date(logsForVehicle[i + 1].loggedAt).getTime()
+          : null;
+        const crossRangeNextTime = i === logsForVehicle.length - 1
+          ? (crossRangeNextMap.get(key) ?? null)
+          : null;
+        let nextLogTime;
+        if (intraRangeNextTime !== null && crossRangeNextTime !== null) {
+          nextLogTime = Math.min(intraRangeNextTime, crossRangeNextTime);
+        } else {
+          nextLogTime = intraRangeNextTime ?? crossRangeNextTime ?? Infinity;
+        }
+        if (entryTime < nextLogTime) {
+          const lid = logsForVehicle[i]._id.toString();
+          if (!entryMap.has(lid)) entryMap.set(lid, []);
+          entryMap.get(lid).push(entry);
+        }
+        break;
+      }
+    }
+  }
+
+  return entryMap;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/analytics/vehicle?range=today|week|month&branch=<BRANCH>
 //
 // Dedicated vehicle-ops analytics: assignment rate, response time, peak
@@ -780,7 +877,7 @@ const [overviewArr, byBranch, byCategory, byMonth, topTechs, vehicleLogCount, ve
 //   vehicle's next visit happens after the range ends, an entry filed for
 //   that later visit could bleed into this window's stats. One bounded
 //   aggregation (crossRangeNextMap) closes that gap, same technique
-//   getBoardLogs uses across day boundaries.
+//   getBoardLogs uses across day boundaries. (Now lives in linkLogsToEntries.)
 //
 // Performance: both queries hit existing compound indexes
 // ({vehicleNoNorm,branch,loggedAt} / {vehicleNoNorm,branch,createdAt}).
@@ -861,81 +958,8 @@ const getVehicleAnalytics = async (req, res) => {
         };
       }
 
-      // ── Build logGroups: vehicleNoNorm|branch → SecurityLog[] (asc loggedAt) ─
-      const logGroups = new Map();
-      let globalMinLoggedAt = Infinity;
-      for (const log of allLogs) {
-        const key = `${log.vehicleNoNorm}|${log.branch}`;
-        if (!logGroups.has(key)) logGroups.set(key, []);
-        logGroups.get(key).push(log);
-        const t = new Date(log.loggedAt).getTime();
-        if (t < globalMinLoggedAt) globalMinLoggedAt = t;
-      }
-
-      const vehicleNorms = [...new Set(allLogs.map((l) => l.vehicleNoNorm))];
-
-      // ── Cross-range next-log lookup — same fix as getBoardLogs's cross-date ─
-      const crossRangeNextLogDocs = await SecurityLog.aggregate([
-        {
-          $match: {
-            vehicleNoNorm: { $in: vehicleNorms },
-            ...branchFilter,
-            loggedAt: { $gte: endDate },
-          },
-        },
-        { $sort: { vehicleNoNorm: 1, branch: 1, loggedAt: 1 } },
-        {
-          $group: {
-            _id: { vehicleNoNorm: "$vehicleNoNorm", branch: "$branch" },
-            nextLoggedAt: { $first: "$loggedAt" },
-          },
-        },
-      ]);
-      const crossRangeNextMap = new Map();
-      for (const doc of crossRangeNextLogDocs) {
-        const key = `${doc._id.vehicleNoNorm}|${doc._id.branch}`;
-        crossRangeNextMap.set(key, new Date(doc.nextLoggedAt).getTime());
-      }
-
-      // ── Batch fetch Entries — no upper bound, same rationale as getBoardLogs ─
-      const entryFilter = {
-        vehicleNoNorm: { $in: vehicleNorms },
-        createdAt: { $gte: new Date(globalMinLoggedAt) },
-        ...branchFilter,
-      };
-      const allEntries = await Entry.find(entryFilter).sort({ createdAt: 1 }).lean();
-
-      // ── Partition — mirrors getBoardLogs's descending-scan algorithm ────────
-      const entryMap = new Map();
-      for (const entry of allEntries) {
-        const key = `${entry.vehicleNoNorm}|${entry.branch}`;
-        const logsForVehicle = logGroups.get(key);
-        if (!logsForVehicle) continue;
-        const entryTime = new Date(entry.createdAt).getTime();
-        for (let i = logsForVehicle.length - 1; i >= 0; i--) {
-          const logTime = new Date(logsForVehicle[i].loggedAt).getTime();
-          if (entryTime >= logTime) {
-            const intraRangeNextTime = i + 1 < logsForVehicle.length
-              ? new Date(logsForVehicle[i + 1].loggedAt).getTime()
-              : null;
-            const crossRangeNextTime = i === logsForVehicle.length - 1
-              ? (crossRangeNextMap.get(key) ?? null)
-              : null;
-            let nextLogTime;
-            if (intraRangeNextTime !== null && crossRangeNextTime !== null) {
-              nextLogTime = Math.min(intraRangeNextTime, crossRangeNextTime);
-            } else {
-              nextLogTime = intraRangeNextTime ?? crossRangeNextTime ?? Infinity;
-            }
-            if (entryTime < nextLogTime) {
-              const lid = logsForVehicle[i]._id.toString();
-              if (!entryMap.has(lid)) entryMap.set(lid, []);
-              entryMap.get(lid).push(entry);
-            }
-            break;
-          }
-        }
-      }
+      // ── Status per log — shared with exportVehicleLogs, see linkLogsToEntries ─
+      const entryMap = await linkLogsToEntries(allLogs, branchFilter, endDate);
 
       // ── Compute stats ─────────────────────────────────────────────────────
       let assigned = 0, unassigned = 0;
@@ -953,8 +977,8 @@ const getVehicleAnalytics = async (req, res) => {
         if (!trendMap.has(dateStr)) trendMap.set(dateStr, { logged: 0, assigned: 0 });
         trendMap.get(dateStr).logged++;
 
-        const hour = new Date(log.loggedAt).getUTCHours();
-        hourMap.set(hour, (hourMap.get(hour) || 0) + 1);
+     const istHr = toISTHour(log.loggedAt);
+        hourMap.set(istHr, (hourMap.get(istHr) || 0) + 1);
         const dow = new Date(log.date).getUTCDay();
         dowMap.set(dow, (dowMap.get(dow) || 0) + 1);
 
@@ -1024,6 +1048,104 @@ const getVehicleAnalytics = async (req, res) => {
   } catch (err) {
     console.error("[getVehicleAnalytics]", err);
     res.status(500).json({ message: "Vehicle analytics fetch failed" });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/analytics/vehicle/export
+//
+// Raw, row-level vehicle gate log for the CURRENT CALENDAR MONTH TO DATE —
+// deliberately independent of getVehicleAnalytics's range tabs (today/week/
+// month). Always "this month", regardless of what's selected on the
+// Vehicle Operations page.
+//
+// Month boundary uses monthDateRange — the SAME UTC-bucketed convention
+// already used for SecurityLog.date elsewhere in this file (see
+// getAnalytics above). Deliberately NOT IST-anchored: SecurityLog.date is
+// already a UTC midnight bucket end-to-end in this codebase, so matching
+// that convention keeps this endpoint agreeing with every other
+// month-scoped view instead of disagreeing with all of them over a
+// boundary nobody else corrects for.
+//
+// Branch scoping is byte-for-byte the same rule as getVehicleAnalytics:
+// branch admin is locked to req.user.branch server-side no matter what (if
+// anything) is sent; superadmin may pass a specific branch or omit it for
+// every branch.
+//
+// Status comes from linkLogsToEntries — the exact function
+// getVehicleAnalytics uses. "Assigned" in this export can never disagree
+// with the dashboard or the Vehicle Log Board, because it's the same
+// computation, not a parallel one.
+//
+// Returns JSON, not a server-built CSV file — this mirrors
+// exportTechnicianData's existing contract (this codebase already builds
+// CSV client-side from JSON), so there's one export convention, not two.
+//
+// Row cap (EXPORT_LIMIT, same constant as exportTechnicianData) is applied
+// to the OUTPUT only, after status has been computed against the complete
+// month's logs. Capping at the DB-query stage would have been unsafe here:
+// unlike Entry rows (which stand alone), a SecurityLog's assigned/
+// unassigned status depends on its position relative to that vehicle's
+// other logs in the month — cutting the input set could mislabel logs
+// sitting right at the truncation boundary. At current real volumes
+// (~3,000 logs/month system-wide, per the comment on getVehicleAnalytics
+// above) this is comfortably within a single in-memory pass; truncation
+// is a safety net, not the expected path.
+// ─────────────────────────────────────────────────────────────────────────────
+const exportVehicleLogs = async (req, res) => {
+  try {
+    let branch = null;
+    if (isBranchAdmin(req)) {
+      branch = req.user.branch;
+    } else if (req.query.branch && req.query.branch !== "all") {
+      if (!VALID_BRANCHES.includes(req.query.branch)) {
+        return res.status(400).json({ message: "Invalid branch." });
+      }
+      branch = req.query.branch;
+    }
+    const branchFilter = branch ? { branch } : {};
+
+    const now = new Date();
+    const { from, to } = monthDateRange(now.getUTCFullYear(), now.getUTCMonth());
+    const dateFilter = { date: { $gte: from, $lt: to } };
+
+    // Fetch the FULL month's logs — no limit here. See note above on why
+    // limiting before linking would be unsafe.
+    const allLogs = await SecurityLog.find({ ...branchFilter, ...dateFilter })
+      .sort({ vehicleNoNorm: 1, loggedAt: 1 })
+      .lean();
+
+    const totalCount = allLogs.length;
+
+    const entryMap = allLogs.length > 0
+      ? await linkLogsToEntries(allLogs, branchFilter, to)
+      : new Map();
+
+    const rows = allLogs.map((log) => ({
+      date:    log.date.toISOString().slice(0, 10), // YYYY-MM-DD, same bucket value used elsewhere
+      vehicle: log.vehicleNo,                        // raw, human-entered format — not vehicleNoNorm
+      branch:  log.branch,
+      status:  (entryMap.get(log._id.toString()) || []).length > 0 ? "Assigned" : "Unassigned",
+    }));
+
+    // Newest first for the spreadsheet. Sorted AFTER status is computed
+    // against the full set — sort order here has no bearing on correctness,
+    // only on row order in the file.
+    rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+    const truncated = totalCount > EXPORT_LIMIT;
+    const outputRows = truncated ? rows.slice(0, EXPORT_LIMIT) : rows;
+
+    res.json({
+      rows: outputRows,
+      totalCount,
+      truncated,
+      branch: branch || "all",
+      month: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
+    });
+  } catch (err) {
+    console.error("[exportVehicleLogs]", err);
+    res.status(500).json({ message: "Vehicle log export failed" });
   }
 };
 
@@ -1122,6 +1244,7 @@ module.exports = {
   exportTechnicianData,
   getAnalytics,
   getVehicleAnalytics,
+  exportVehicleLogs,
   editUser,
   deleteUser,
 };
