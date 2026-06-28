@@ -69,7 +69,25 @@ const userSchema = new mongoose.Schema(
       enum:    [null, ...TECHNICIAN_TYPES],
       default: null,
     },
+    passwordResetToken: {
+  type:    String,
+  select:  false,   // never returned in normal queries — hash only, never raw OTP
+  default: null,
+},
+passwordResetExpires: {
+  type:    Date,
+  default: null,
+},
+passwordResetAttempts: {
+  type:    Number,
+  default: 0,
+},
+forcePasswordChange: {
+  type:    Boolean,
+  default: false,
+},
   },
+  
   { timestamps: true }
 );
 
