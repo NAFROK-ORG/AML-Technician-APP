@@ -4,7 +4,8 @@ const Attendance  = require("../models/Attendance");
 const SecurityLog = require("../models/SecurityLog");
 const { writeAuditLog } = require("../utils/auditLogger");
 const { getOrSet } = require("../utils/cache");
-
+const crypto  = require("crypto");
+const bcrypt  = require("bcryptjs");
 const { VALID_BRANCHES } = require("../utils/constants");
 const { utcMidnight, toISTHour } = require("../utils/timeUtils");
 const isBranchAdmin = (req) => req.user.role === "admin";
@@ -1233,7 +1234,51 @@ const deleteUser = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+// ─── POST /api/admin/technicians/:userId/reset-password ──────────────────────
+// Flow B — admin-assisted reset. Branch guard enforced inside function,
+// not just by middleware, for defence-in-depth.
+// Temp password: 8 chars from unambiguous alphanumeric charset, shown ONCE.
+// forcePasswordChange: true forces the technician to set a private password
+// before they can use any feature of the system.
+const adminResetPassword = async (req, res) => {
+  try {
+    const { userId } = req.params;
 
+    const targetUser = await User.findById(userId).select("+password");
+    if (!targetUser) return res.status(404).json({ message: "User not found." });
+
+    // 404 (not 403) on admin/superadmin — does not reveal a high-privilege
+    // account exists in the system to the requesting admin.
+    if (!["technician", "security"].includes(targetUser.role))
+      return res.status(404).json({ message: "User not found." });
+
+    // Branch admin cannot reset accounts outside their branch.
+    if (isBranchAdmin(req) && targetUser.branch !== req.user.branch)
+      return res.status(403).json({ message: "Access denied: This user is not in your branch." });
+
+    // Unambiguous charset — excludes O, 0, I, 1 to prevent mis-reading.
+    const CHARSET    = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const rawBytes   = crypto.randomBytes(8);
+    const tempRaw    = Array.from(rawBytes).map((b) => CHARSET[b % CHARSET.length]).join("");
+    // Format as XXXX-XXXX for readability when communicated verbally.
+    const tempPassword = `${tempRaw.slice(0, 4)}-${tempRaw.slice(4)}`;
+
+    // Hash the formatted version (with hyphen) — this is what the user will type at login.
+    targetUser.password            = await bcrypt.hash(tempPassword, 10);
+    targetUser.forcePasswordChange = true;
+    await targetUser.save();
+
+    // tempPassword returned ONCE — not stored anywhere after this response.
+    return res.status(200).json({
+      message:      "Temporary password set. Communicate it verbally to the technician.",
+      tempPassword,
+      name: targetUser.name,
+    });
+  } catch (err) {
+    console.error("[adminResetPassword]", err);
+    return res.status(500).json({ message: "Password reset failed. Please try again." });
+  }
+};
 module.exports = {
   getBranches,
   getBranchDashboard,
@@ -1247,4 +1292,5 @@ module.exports = {
   exportVehicleLogs,
   editUser,
   deleteUser,
+  adminResetPassword,   // ← ADD
 };
