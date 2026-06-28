@@ -17,7 +17,8 @@ import VehicleLogBoard from "./pages/VehicleLogBoard";
 import VehicleAnalytics from "./pages/VehicleAnalytics";
 import AuditLog from "./pages/AuditLog";
 import AttendanceAnalytics from "./pages/AttendanceAnalytics"; // ← NEW
-
+import ForgotPassword from "./pages/ForgotPassword";
+import ChangePassword from "./pages/ChangePassword";
 function GuestRoute({ children }) {
   const { token, user } = useAuthStore();
   const [hydrated, setHydrated] = useState(
@@ -53,7 +54,18 @@ export default function App() {
         {/* Public */}
         <Route path="/login"  element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
+{/* Password recovery — public, guest-gated */}
+<Route path="/forgot-password" element={<GuestRoute><ForgotPassword /></GuestRoute>} />
 
+{/* Forced password change after admin reset — requires active session */}
+<Route
+  path="/change-password"
+  element={
+    <ProtectedRoute role={["technician", "security"]}>
+      <ChangePassword />
+    </ProtectedRoute>
+  }
+/>
         {/* Technician only */}
         <Route
           path="/dashboard"
@@ -157,6 +169,7 @@ export default function App() {
         />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
+        
       </Routes>
 
       <PoweredBy />
