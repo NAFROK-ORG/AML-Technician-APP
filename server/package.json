@@ -17,7 +17,8 @@
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^7.0.0",
     "node-cache": "^5.1.2",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
