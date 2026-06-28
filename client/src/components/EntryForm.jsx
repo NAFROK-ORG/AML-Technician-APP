@@ -147,14 +147,14 @@ export default function EntryForm({ onClose, onSaved }) {
     setLoading(true);
     setServerError("");
     try {
-      await api.post("/api/entries", {
-        ...data,
-        labourAmount: Number(data.labourAmount) || 0,
-        leaveDays:    Number(data.leaveDays)    || 0,
-        hoursWorked:  Number(data.hoursWorked)  || 0,
-      });
-      onSaved();
-      onClose();
+const res = await api.post("/api/entries", {
+  ...data,
+  labourAmount: Number(data.labourAmount) || 0,
+  leaveDays:    Number(data.leaveDays)    || 0,
+  hoursWorked:  Number(data.hoursWorked)  || 0,
+});
+onSaved(res.data.entry);
+onClose();
     } catch (err) {
       setServerError(err.response?.data?.message || "Failed to save entry");
     } finally {
