@@ -1,7 +1,10 @@
 const express    = require("express");
 const router     = express.Router();
 const rateLimit  = require("express-rate-limit"); // already installed — used on /api/search
-const { signup, login, profileSetup, typeSetup, getMe } = require("../controllers/authController");
+const {
+  signup, login, profileSetup, typeSetup, getMe,
+  forgotPassword, verifyOtp, resetPassword, changePassword,  // ← ADD
+} = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 
 // ── Login rate limiter ────────────────────────────────────────────────────────
@@ -22,5 +25,8 @@ router.post("/login",        loginLimiter, login); // ← rate limiter added her
 router.put("/profile-setup", protect, profileSetup);
 router.put("/type-setup",    protect, typeSetup);
 router.get("/me",            protect, getMe);
-
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-otp",      verifyOtp);
+router.post("/reset-password",  resetPassword);
+router.put("/change-password",  protect, changePassword);
 module.exports = router;
