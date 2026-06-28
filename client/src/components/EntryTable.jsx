@@ -267,7 +267,7 @@ const EntryRow = memo(function EntryRow({ entry, onEdit }) {
 
 // ─── Main EntryTable ────────────────────────────────────────────────────────
 // FIX: removed `onDeleted` prop and all delete logic. Read-only history + edit.
-export default function EntryTable({ entries, onEdit }) {
+export default function EntryTable({ entries, entriesTotal, onEdit }) {
   const [page, setPage] = useState(1);
 
   // Reset to page 1 whenever the entries list length changes
@@ -322,13 +322,13 @@ export default function EntryTable({ entries, onEdit }) {
 
       {/* Only show pagination when there's more than one page */}
       {entries.length > ITEMS_PER_PAGE && (
-        <Pagination
-          page={safePageParam}
-          totalPages={totalPages}
-          total={entries.length}
-          onPrev={handlePrev}
-          onNext={handleNext}
-        />
+      <Pagination
+    page={safePageParam}
+    totalPages={totalPages}
+    total={entriesTotal ?? entries.length}
+    onPrev={handlePrev}
+    onNext={handleNext}
+  />
       )}
     </div>
   );
