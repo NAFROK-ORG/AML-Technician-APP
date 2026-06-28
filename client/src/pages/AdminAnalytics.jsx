@@ -10,7 +10,6 @@ import { BRANCHES } from "../utils/constants";
 
 /* ─── Corporate light tokens ─────────────────────────────────────── */
 const C = {
-
   pageBg:  "#EEF2F7",
   card:    "#FFFFFF",
   cardAlt: "#F8FAFC",
@@ -25,17 +24,15 @@ const C = {
   success: "#16A34A",
   danger:  "#DC2626",
   amber:   "#D97706",
-  
 };
 
 /* ─── Month presets — computed once at module load ───────────────── */
-// Generates: "This Month" + 6 previous months
 const MONTH_PRESETS = (() => {
   const now = new Date();
   return Array.from({ length: 7 }, (_, i) => {
     const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const y   = d.getFullYear();
-    const m   = d.getMonth(); // 0-indexed
+    const m   = d.getMonth();
     const mm  = String(m + 1).padStart(2, "0");
     const from = `${y}-${mm}-01`;
     const lastDay = new Date(y, m + 1, 0).getDate();
@@ -89,6 +86,25 @@ const INJECTED = `
     to   { opacity: 1; transform: translateY(0); }
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Skeleton shimmer ── */
+  @keyframes aaShimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .aa-skeleton-block {
+    background: linear-gradient(90deg, #E0E6F0 25%, #EEF2F7 50%, #E0E6F0 75%);
+    background-size: 200% 100%;
+    animation: aaShimmer 1.4s ease-in-out infinite;
+    border: 1px solid #DDE3EE;
+  }
+  .aa-skeleton-kpi {
+    height: 100px;
+    border-left: 3px solid #DDE3EE;
+  }
+  .aa-skeleton-chart-tall  { height: 340px; }
+  .aa-skeleton-chart-med   { height: 300px; }
+  .aa-skeleton-chart-short { height: 160px; }
 
   .aa-a1 { animation: aaFadeUp 0.3s ease both 0.00s; }
   .aa-a2 { animation: aaFadeUp 0.3s ease both 0.06s; }
@@ -221,13 +237,21 @@ const INJECTED = `
   .aa-metric-pill.active { background: #1E3A8A; border-color: #1E3A8A; color: #FFFFFF; }
 
   /* ── Grid layouts ── */
+
+  /*
+   * KPI grid — real gap + per-card border.
+   * PREVIOUSLY used gap:1px + background:#DDE3EE (border-through-gap trick).
+   * That produced 2 stray gray ghost cells whenever 7 cards were rendered
+   * (6 fixed + conditional Avg Labour card) because 7 ÷ 3 = 2 rows + 1 lone
+   * card, leaving 2 empty grid cells with the grid's background showing through.
+   * Fixed: real gap, each KpiCard owns its own border. No ghosts at any count.
+   */
   .aa-kpi-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1px;
-    background: #DDE3EE;
-    border: 1px solid #DDE3EE;
+    gap: 12px;
   }
+
   .aa-row-2col {
     display: grid;
     grid-template-columns: 1fr 340px;
@@ -281,7 +305,7 @@ const INJECTED = `
   /* ── Chart height wrappers ── */
   .aa-chart-h260 { height: 260px; }
   .aa-chart-h240 { height: 240px; }
-.aa-chart-h170 { height: 170px; }
+  .aa-chart-h170 { height: 170px; }
   .aa-chart-h120 { height: 120px; }
 
   /* ── Table ── */
@@ -326,33 +350,32 @@ const INJECTED = `
   /* ── Responsive — mobile ── */
   @media (max-width: 640px) {
     .aa-kpi-grid { grid-template-columns: 1fr 1fr !important; }
+    .aa-skeleton-chart-tall  { height: 200px; }
+    .aa-skeleton-chart-med   { height: 185px; }
+    .aa-skeleton-chart-short { height: 120px; }
 
-    /* Charts shorter on mobile */
-  .aa-chart-h260 { height: 200px; }
+    .aa-chart-h260 { height: 200px; }
     .aa-chart-h240 { height: 185px; }
     .aa-chart-h170 { height: 145px; }
     .aa-chart-h120 { height: 100px; }
 
-    /* Filter bar: stack fully */
     .aa-filter-bar { flex-direction: column; gap: 12px; }
     .aa-filter-field { width: 100%; min-width: unset; }
     .aa-filter-dates { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .aa-filter-date-field { min-width: unset; }
     .aa-filter-status { margin-left: 0; width: 100%; text-align: left; padding-bottom: 0; }
 
-    /* Page header */
     .aa-page-header { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
     .aa-export-btn { width: 100%; text-align: center; }
     .aa-page-title { font-size: 26px !important; }
 
-    /* Metric pills */
     .aa-metric-pill { font-size: 8px; padding: 4px 8px; }
   }
 
-@media (max-width: 420px) {
+  @media (max-width: 420px) {
     .aa-kpi-grid { grid-template-columns: 1fr 1fr !important; }
     .aa-filter-dates { grid-template-columns: 1fr; }
-  .aa-chart-h260 { height: 175px; }
+    .aa-chart-h260 { height: 175px; }
     .aa-chart-h240 { height: 165px; }
     .aa-chart-h170 { height: 130px; }
     .aa-chart-h120 { height: 85px; }
@@ -407,7 +430,8 @@ const KpiCard = ({ label, value, sub, accent = C.navy }) => (
     padding: "20px 18px 16px",
     display: "flex",
     flexDirection: "column",
-    borderLeft: `3px solid ${accent}`,
+    border: `1px solid ${C.border}`,    /* full card border first */
+    borderLeft: `3px solid ${accent}`,  /* accent override on left */
   }}>
     <div style={{
       fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
@@ -488,6 +512,37 @@ const NoData = () => (
 const AXIS_TICK  = { fill: C.muted, fontSize: 11, fontFamily: "'IBM Plex Sans', sans-serif" };
 const CHART_GRID = { strokeDasharray: "3 3", stroke: C.border };
 
+/* ─── Skeleton loading — matches the actual page layout ──────────── */
+/*
+ * Shimmer placeholders that mirror the real content structure:
+ * KPI grid → 2-col chart row → full-width trend → vehicle bar → 2-col tables.
+ * Admin sees the scaffold of where data will appear, so the wait reads
+ * as "loading" rather than "broken" — perceived speed increase without
+ * touching any network logic.
+ */
+const AnalyticsSkeleton = () => (
+  <div>
+    {/* KPI grid — 6 skeleton cards, same 3-col layout */}
+    <div className="aa-kpi-grid" style={{ marginBottom: "24px" }}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="aa-skeleton-block aa-skeleton-kpi" />
+      ))}
+    </div>
+
+    {/* Branch bar + category donut */}
+    <div className="aa-row-2col" style={{ marginBottom: "20px" }}>
+      <div className="aa-skeleton-block aa-skeleton-chart-tall" />
+      <div className="aa-skeleton-block aa-skeleton-chart-tall" />
+    </div>
+
+    {/* Monthly trend */}
+    <div className="aa-skeleton-block aa-skeleton-chart-med" style={{ marginBottom: "20px" }} />
+
+    {/* Vehicle gate bar */}
+    <div className="aa-skeleton-block aa-skeleton-chart-short" style={{ marginBottom: "20px" }} />
+  </div>
+);
+
 /* ─── Main component ─────────────────────────────────────────────── */
 export default function AdminAnalytics() {
   const { user } = useAuthStore();
@@ -495,7 +550,6 @@ export default function AdminAnalytics() {
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
-  // ── Default to current month ──
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
@@ -505,7 +559,11 @@ export default function AdminAnalytics() {
   const [to,           setTo]           = useState(MONTH_PRESETS[0].to);
   const [branchMetric, setBranchMetric] = useState("totalLabour");
 
-  /* inject styles */
+  /* Inject styles once per session.
+     NOT removed on unmount — each admin page mounts its own <Navbar/>
+     and analytics instance; removing on unmount causes a flash of
+     unstyled content on every filter/navigation interaction.
+     See Navbar.jsx for the full explanation of this pattern. */
   useEffect(() => {
     const id = "aa-styles";
     if (!document.getElementById(id)) {
@@ -513,10 +571,8 @@ export default function AdminAnalytics() {
       el.id = id; el.textContent = INJECTED;
       document.head.appendChild(el);
     }
-    return () => { const el = document.getElementById(id); if (el) document.head.removeChild(el); };
   }, []);
 
-  /* ── Month preset handler: updates from/to automatically ── */
   const handleMonthPreset = useCallback((key) => {
     const preset = MONTH_PRESETS.find(p => p.key === key);
     if (!preset) return;
@@ -525,7 +581,6 @@ export default function AdminAnalytics() {
     setTo(preset.to);
   }, []);
 
-  /* ── Manual date change: overrides preset → "custom" ── */
   const handleFromChange = useCallback((val) => {
     setFrom(val);
     setMonthPreset("custom");
@@ -554,7 +609,7 @@ export default function AdminAnalytics() {
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  /* ── CSV export — improved with metadata + sections ── */
+  /* ── CSV export ── */
   const exportCSV = () => {
     if (!data) return;
     const o = data.overview;
@@ -565,12 +620,10 @@ export default function AdminAnalytics() {
     const generated   = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
 
     const rows = [
-      // ── Metadata header
       ["AML Motors — Performance Analytics Export"],
       ["Branch", branchLabel, "Period", periodLabel, "Date Range", dateRange],
       ["Generated", generated],
       [""],
-      // ── Overview
       ["OVERVIEW TOTALS"],
       ["Metric", "Value"],
       ["Total Labour (₹)",    o.totalLabour],
@@ -580,14 +633,12 @@ export default function AdminAnalytics() {
       ["Total Leave Days",    o.totalLeaveDays],
       ["Avg Labour / Entry (₹)", o.totalEntries > 0 ? Math.round(o.totalLabour / o.totalEntries) : 0],
       [""],
-      // ── Branch
       ["BRANCH PERFORMANCE"],
       ["Branch", "Labour (₹)", "Hours", "Entries", "Incentives (₹)", "Leave Days"],
       ...data.byBranch.map(b => [
         b._id, b.totalLabour, b.totalHours, b.totalEntries, b.totalIncentives, b.totalLeaveDays,
       ]),
       [""],
-      // ── Category
       ["CATEGORY BREAKDOWN"],
       ["Category", "Entries", "Hours", "Labour (₹)", "Avg Labour / Entry (₹)"],
       ...data.byCategory.map(c => [
@@ -595,14 +646,12 @@ export default function AdminAnalytics() {
         c.count > 0 ? Math.round(c.totalLabour / c.count) : 0,
       ]),
       [""],
-      // ── Monthly trend
       ["MONTHLY TREND"],
       ["Month", "Labour (₹)", "Hours", "Entries", "Incentives (₹)"],
       ...data.byMonth.map(m => [
         m.label, m.totalLabour, m.totalHours, m.totalEntries, m.totalIncentives,
       ]),
       [""],
-      // ── Top technicians
       ["TOP TECHNICIANS — LABOUR"],
       ["Rank", "Name", "Technician ID", "Branch", "Labour (₹)", "Hours", "Entries"],
       ...data.topTechs.map((t, i) => [
@@ -624,7 +673,6 @@ export default function AdminAnalytics() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Filter helpers ──
   const isCurrentMonth  = monthPreset === MONTH_PRESETS[0].key;
   const hasActiveFilter = (isSuperAdmin && !!branch) || !isCurrentMonth;
 
@@ -704,7 +752,7 @@ export default function AdminAnalytics() {
                 : "Cross-branch performance intelligence · AML Motors"}
             </p>
           </div>
-          <button className="aa-export-btn" onClick={exportCSV} disabled={!data}>
+          <button className="aa-export-btn" onClick={exportCSV} disabled={!data || loading}>
             ↓ Export CSV
           </button>
         </div>
@@ -722,7 +770,6 @@ export default function AdminAnalytics() {
         >
           <div className="aa-filter-bar">
 
-            {/* Branch selector — superadmin only */}
             {isSuperAdmin && (
               <div className="aa-filter-field">
                 <FLabel text="Branch" />
@@ -737,7 +784,6 @@ export default function AdminAnalytics() {
               </div>
             )}
 
-            {/* Locked branch badge — branch admin */}
             {isBranchAdmin && (
               <div className="aa-filter-field" style={{ minWidth: "unset" }}>
                 <FLabel text="Branch" />
@@ -761,13 +807,14 @@ export default function AdminAnalytics() {
               </div>
             )}
 
-            {/* ── Month preset selector (primary time control) ── */}
+            {/* Period preset — primary time control */}
             <div className="aa-filter-field" style={{ minWidth: "160px" }}>
               <FLabel text="Period" />
               <select
                 className="aa-filter-select"
                 value={monthPreset}
                 onChange={e => handleMonthPreset(e.target.value)}
+                style={{ borderLeft: `3px solid ${C.navy}` }}
               >
                 {MONTH_PRESETS.map(p => (
                   <option key={p.key} value={p.key}>{p.label}</option>
@@ -778,7 +825,7 @@ export default function AdminAnalytics() {
               </select>
             </div>
 
-            {/* ── From / To date overrides (secondary) ── */}
+            {/* From / To — secondary date overrides */}
             <div className="aa-filter-dates">
               <div className="aa-filter-date-field">
                 <FLabel text="From" secondary />
@@ -802,7 +849,6 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
-            {/* Clear — only when non-default filter active */}
             {hasActiveFilter && (
               <button className="aa-clear-btn" onClick={clearFilters}
                 style={{ alignSelf: "flex-end" }}>
@@ -810,31 +856,17 @@ export default function AdminAnalytics() {
               </button>
             )}
 
-            {/* Filter status — right-aligned */}
             {!loading && (
               <div className="aa-filter-status">{filterStatusText()}</div>
             )}
           </div>
         </div>
 
-        {/* ── Loading ── */}
-        {loading && (
-          <div style={{ textAlign: "center", padding: "80px 0" }}>
-            <div style={{
-              width: "24px", height: "24px",
-              border: `2px solid ${C.border}`, borderTop: `2px solid ${C.navy}`,
-              borderRadius: "50%", margin: "0 auto 16px",
-              animation: "spin 0.8s linear infinite",
-            }} />
-            <p style={{
-              fontSize: "10px", letterSpacing: "0.18em",
-              textTransform: "uppercase", fontWeight: "700", color: C.dim, margin: 0,
-            }}>Loading analytics…</p>
-          </div>
-        )}
+        {/* ── Skeleton loading (replaces blank spinner) ── */}
+        {loading && <AnalyticsSkeleton />}
 
         {/* ── Error ── */}
-        {error && (
+        {!loading && error && (
           <div style={{
             background: "#FEF2F2", border: "1px solid #FECACA",
             borderLeft: "3px solid #DC2626",
@@ -854,13 +886,37 @@ export default function AdminAnalytics() {
         {/* ── Main content ── */}
         {!loading && !error && data && (
           <>
-            {/* KPI grid */}
+            {/*
+             * KPI CARD ORDER — psychological hierarchy (F-pattern reading):
+             *
+             * Row 1 — PRIMARY (the three numbers an admin wants first):
+             *   Total Labour | Total Entries | Total Hours
+             *   (money → volume → time — answers "how did we do?")
+             *
+             * Row 2 — SECONDARY (efficiency and cost):
+             *   Incentives Paid | Avg Labour / Entry | Vehicles Logged
+             *   (cost → efficiency ratio → operational check)
+             *
+             * Row 3 — TERTIARY (HR, least actionable daily):
+             *   Leave Days
+             *   (sits alone at bottom — intentional, not an orphan artifact)
+             *
+             * 7 cards in repeat(3) grid = 3+3+1. With real gap + per-card
+             * border, the lone Leave Days card looks deliberate (it is).
+             * No ghost cells — the bug from the old gap-trick is fixed above.
+             */}
             <div className="aa-a3 aa-kpi-grid" style={{ marginBottom: "24px" }}>
               <KpiCard
                 label="Total Labour"
                 value={fmt(o.totalLabour)}
                 sub={fmtFull(o.totalLabour)}
                 accent={C.amber}
+              />
+              <KpiCard
+                label="Total Entries"
+                value={o.totalEntries.toLocaleString("en-IN")}
+                sub="job cards logged"
+                accent="#7C3AED"
               />
               <KpiCard
                 label="Total Hours"
@@ -875,10 +931,16 @@ export default function AdminAnalytics() {
                 accent={C.navy}
               />
               <KpiCard
-                label="Total Entries"
-                value={o.totalEntries.toLocaleString("en-IN")}
-                sub="job cards logged"
-                accent="#7C3AED"
+                label="Avg Labour / Entry"
+                value={o.totalEntries > 0 ? fmt(Math.round(o.totalLabour / o.totalEntries)) : "—"}
+                sub="per job card"
+                accent="#0891B2"
+              />
+              <KpiCard
+                label="Vehicles Logged"
+                value={(o.totalVehiclesLogged || 0).toLocaleString("en-IN")}
+                sub="gate entries"
+                accent="#0E7490"
               />
               <KpiCard
                 label="Leave Days"
@@ -886,26 +948,10 @@ export default function AdminAnalytics() {
                 sub="across technicians"
                 accent={C.muted}
               />
-          <KpiCard
-                label="Vehicles Logged"
-                value={(o.totalVehiclesLogged || 0).toLocaleString("en-IN")}
-                sub="gate entries"
-                accent="#0E7490"
-              />
-              {o.totalEntries > 0 && (
-                <KpiCard
-                  label="Avg Labour / Entry"
-                  value={fmt(Math.round(o.totalLabour / o.totalEntries))}
-                  sub="per job card"
-                  accent="#0891B2"
-                />
-              )}
             </div>
 
             {/* ── Row 1: Branch bar + Category donut ── */}
             <div className="aa-a4 aa-row-2col" style={{ marginBottom: "20px" }}>
-
-              {/* Branch bar chart */}
               <ChartCard
                 title={isBranchAdmin ? "Branch Performance" : "Branch Comparison"}
                 action={
@@ -945,7 +991,6 @@ export default function AdminAnalytics() {
                 )}
               </ChartCard>
 
-              {/* Category donut */}
               <ChartCard title="Labour by Category">
                 {data.byCategory.length === 0 ? <NoData /> : (
                   <>
@@ -969,7 +1014,6 @@ export default function AdminAnalytics() {
                       </ResponsiveContainer>
                     </div>
 
-                    {/* Legend with progress bars */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
                       {data.byCategory.map((c, i) => {
                         const pct   = o.totalLabour > 0 ? ((c.totalLabour / o.totalLabour) * 100).toFixed(1) : 0;
@@ -1041,7 +1085,7 @@ export default function AdminAnalytics() {
               )}
             </ChartCard>
 
-        {/* ── Vehicle Gate Activity — mini monthly bar (Option B) ── */}
+            {/* ── Vehicle Gate Activity ── */}
             <ChartCard
               className="aa-a4"
               title="Vehicle Gate Activity — Monthly Logged"
@@ -1061,12 +1105,7 @@ export default function AdminAnalytics() {
                       <XAxis dataKey="label" tick={AXIS_TICK} />
                       <YAxis tick={AXIS_TICK} allowDecimals={false} width={35} />
                       <Tooltip content={<LightTooltip />} />
-                      <Bar
-                        dataKey="totalVehiclesLogged"
-                        name="Vehicles Logged"
-                        fill="#0E7490"
-                        radius={[0, 0, 0, 0]}
-                      />
+                      <Bar dataKey="totalVehiclesLogged" name="Vehicles Logged" fill="#0E7490" radius={[0,0,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1076,7 +1115,6 @@ export default function AdminAnalytics() {
             {/* ── Row 3: Top technicians + Category table ── */}
             <div className="aa-a5 aa-row-equal" style={{ marginBottom: "20px" }}>
 
-              {/* Top technicians */}
               <ChartCard
                 title="Top Technicians — Labour"
                 action={
@@ -1151,7 +1189,6 @@ export default function AdminAnalytics() {
                 )}
               </ChartCard>
 
-              {/* Category breakdown table */}
               <ChartCard title="Category Breakdown">
                 {data.byCategory.length === 0 ? <NoData /> : (
                   <div style={{ overflowX: "auto" }}>
