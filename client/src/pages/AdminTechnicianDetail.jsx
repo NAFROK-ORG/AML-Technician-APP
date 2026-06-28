@@ -3,8 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
+import { useAuthStore } from "../store/authStore";
 import { CATEGORIES } from "../utils/constants";
 import "./AdminTechnicianDetail.css";
+
 /* ─── Design tokens ──────────────────────────────────────────────── */
 const C = {
   pageBg:  "#EEF2F7",
@@ -348,6 +350,7 @@ function EntryCard({ entry, onEdit, onDelete }) {
 
 /* ─── Main page ──────────────────────────────────────────────────── */
 export default function AdminTechnicianDetail() {
+
   const { userId } = useParams();
   const navigate   = useNavigate();
 
@@ -357,6 +360,13 @@ export default function AdminTechnicianDetail() {
   const [page,          setPage]         = useState(1);
   const [editingEntry,  setEditing]      = useState(null);
   const [exporting,     setExporting]    = useState(false);
+
+  // ── Password reset state (admin-assisted reset) ───────────────────
+  // currentUser is the logged-in admin, kept separate from `user` below
+  // (which is the technician being viewed) to avoid a naming collision.
+  const { user: currentUser }            = useAuthStore();
+  const [resetResult,   setResetResult]  = useState(null);
+  const [resetting,     setResetting]    = useState(false);
 
   // ── Vehicle search state ──────────────────────────────────────────
   // vehicleSearch  — live controlled input value
@@ -439,6 +449,24 @@ export default function AdminTechnicianDetail() {
       alert("Export failed. Please try again.");
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Admin-assisted password reset — generates a temp password and forces
+  // the technician/security user to change it on their next login.
+  const handleResetPassword = async () => {
+    if (!window.confirm(
+      `Reset password for ${data?.user?.name}?\n\nThey will be required to set a new password on their next login.`
+    )) return;
+
+    setResetting(true);
+    try {
+      const r = await api.post(`/api/admin/technicians/${userId}/reset-password`);
+      setResetResult({ tempPassword: r.data.tempPassword, name: r.data.name });
+    } catch (e) {
+      alert(e.response?.data?.message || "Password reset failed. Please try again.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -550,6 +578,65 @@ export default function AdminTechnicianDetail() {
         />
       )}
 
+      {resetResult && (
+        <div style={{
+          position:   "fixed",
+          top:        "16px",
+          right:      "16px",
+          zIndex:     1000,
+          background: "#FFFFFF",
+          border:     `1px solid ${C.border}`,
+          borderLeft: `3px solid ${C.amber}`,
+          padding:    "16px 18px",
+          maxWidth:   "320px",
+          boxShadow:  "0 4px 16px rgba(0,0,0,0.08)",
+          fontFamily: "'IBM Plex Sans', sans-serif",
+        }}>
+          <div style={{
+            fontSize:      "9px",
+            fontWeight:    "700",
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color:         C.amber,
+            marginBottom:  "8px",
+          }}>
+            Temporary Password — Show Once Only
+          </div>
+          <p style={{
+            fontFamily:    "'IBM Plex Mono', monospace",
+            fontSize:      "22px",
+            fontWeight:    "700",
+            color:         C.ink,
+            letterSpacing: "0.2em",
+            margin:        "0 0 10px",
+          }}>
+            {resetResult.tempPassword}
+          </p>
+          <p style={{ margin: "0", fontSize: "12px", color: C.mid, lineHeight: 1.5 }}>
+            Tell <strong>{resetResult.name}</strong> this password verbally.
+            They will be forced to change it on their next login.
+            Once you dismiss this, the password is gone.
+          </p>
+          <button
+            onClick={() => setResetResult(null)}
+            style={{
+              marginTop:     "12px",
+              background:    "none",
+              border:        `1px solid ${C.border}`,
+              padding:       "5px 12px",
+              fontSize:      "10px",
+              cursor:        "pointer",
+              fontFamily:    "'IBM Plex Sans', sans-serif",
+              color:         C.muted,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div style={{ padding: "24px 16px 60px", maxWidth: "900px", margin: "0 auto" }}>
 
         {/* ── Header ── */}
@@ -621,9 +708,33 @@ export default function AdminTechnicianDetail() {
               </div>
             </div>
 
-            <button className="ad-export-btn" onClick={handleExport} disabled={exporting}>
-              {exporting ? "Exporting…" : "↓ Export CSV"}
-            </button>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              {/* Reset password — only for technician/security accounts */}
+              {(user?.role === "technician" || user?.role === "security") && (
+                <button
+                  onClick={handleResetPassword}
+                  disabled={resetting}
+                  style={{
+                    padding:     "9px 16px",
+                    background:  "transparent",
+                    border:      `1px solid ${C.danger}`,
+                    color:       resetting ? C.dim : C.danger,
+                    fontSize:    "10px",
+                    fontWeight:  "700",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    cursor:      resetting ? "not-allowed" : "pointer",
+                    fontFamily:  "'IBM Plex Sans', sans-serif",
+                  }}
+                >
+                  {resetting ? "Resetting…" : "↺ Reset Password"}
+                </button>
+              )}
+
+              <button className="ad-export-btn" onClick={handleExport} disabled={exporting}>
+                {exporting ? "Exporting…" : "↓ Export CSV"}
+              </button>
+            </div>
           </div>
         </div>
 
