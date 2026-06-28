@@ -348,21 +348,35 @@ export default function Login() {
     };
   }, []);
 
-  const onSubmit = async (data) => {
-    setLoading(true);
-    setServerError("");
-    try {
-      const res = await api.post("/api/auth/login", data);
-      setAuth(res.data.token, res.data.user);
-      navigate(res.data.user.role === "admin" ? "/admin" : "/dashboard");
-    } catch (err) {
-      setServerError(
-        err.response && err.response.data ? err.response.data.message : "Login failed. Please try again."
+const onSubmit = async (data) => {
+  setLoading(true);
+  setServerError("");
+  try {
+    const res = await api.post("/api/auth/login", data);
+    setAuth(res.data.token, res.data.user);
+
+    // Flow B intercept: technician forced to change password after admin reset.
+    // Existing users: forcePasswordChange is false (or undefined → falsy).
+    // No existing session is affected.
+    if (res.data.user.forcePasswordChange) {
+      navigate("/change-password");
+    } else {
+      navigate(
+        res.data.user.role === "admin" || res.data.user.role === "superadmin"
+          ? "/admin"
+          : "/dashboard"
       );
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    setServerError(
+      err.response && err.response.data
+        ? err.response.data.message
+        : "Login failed. Please try again."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="corp-page">
@@ -448,10 +462,15 @@ export default function Login() {
             </form>
           </div>
 
-          <p className="corp-footer-link">
-            New technician?{" "}
-            <Link to="/signup">Create account</Link>
-          </p>
+      <p className="corp-footer-link">
+  New technician?{" "}
+  <Link to="/signup">Create account</Link>
+</p>
+<p className="corp-footer-link" style={{ marginTop: "10px" }}>
+  <Link to="/forgot-password" style={{ fontSize: "13px", color: "#6B7A99", fontWeight: 400 }}>
+    Forgot your password?
+  </Link>
+</p>
 
         </div>
       </main>
