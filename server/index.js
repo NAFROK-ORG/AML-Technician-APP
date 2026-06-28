@@ -15,7 +15,7 @@ const adminRoutes       = require("./routes/adminRoutes");
 const attendanceRoutes  = require("./routes/attendanceRoutes");
 const searchRoutes      = require("./routes/searchRoutes");       // ← new
 const auditRoutes = require("./routes/auditRoutes");
-const { generalLimiter, authLimiter } = require("./middleware/rateLimiter");
+const { generalLimiter, authLimiter, forgotPasswordLimiter } = require("./middleware/rateLimiter");
 const app = express();
 app.set("trust proxy", 1);
 connectDB();
@@ -49,7 +49,7 @@ app.use(generalLimiter);
 // profile-setup, etc. under /api/auth are untouched by this and still only
 // covered by generalLimiter above.
 app.use("/api/auth/login", authLimiter);
-
+app.use("/api/auth/forgot-password", forgotPasswordLimiter);
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/entries", entryRoutes);
