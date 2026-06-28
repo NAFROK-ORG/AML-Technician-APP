@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useForm } from "react-hook-form";
 import Navbar from "../components/Navbar";
 import ProfileSetupModal from "../components/ProfileSetupModal";
@@ -8,8 +8,8 @@ import { useAuthStore } from "../store/authStore";
 import api from "../api/axios";
 import TechnicianTypeModal from "../components/TechnicianTypeModal";
 import { CATEGORIES } from "../utils/constants";
-import { normalizeVehicleNo } from "../utils/vehicleUtils"; // ← NEW
-import "./TechnicianDashboard.css"; // ← styles moved out of this file
+import { normalizeVehicleNo } from "../utils/vehicleUtils";
+import "./TechnicianDashboard.css";
 
 // ─── Stable month reference (page-load time) ─────────────────────────────────
 const NOW = new Date();
@@ -45,20 +45,23 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ];
 
-// ── FIX Bug 4: SLABS constant removed — now uses data.nextSlab from API ──────
-// The backend returns nextSlab (the next slab object to reach, or null if at max).
-// Using data.nextSlab is always correct for any tier (mechanic or helper).
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const StatCard = memo(function StatCard({ label, value, unit, accent, accentCard }) {
+// FIX: added `loading` prop — renders a shimmer skeleton instead of a static
+// "—" while data is in flight. A static dash reads as "nothing happening";
+// a shimmer reads as "data is coming" — same wait, better perceived speed.
+const StatCard = memo(function StatCard({ label, value, unit, accent, accentCard, loading }) {
   return (
     <div className={`td-stat-card${accentCard ? " td-stat-card-accent" : ""}`}>
       <div className="td-stat-label">{label}</div>
-      <div className="td-stat-value" style={accent ? { color: accent } : undefined}>
-        {value}
-      </div>
-      {unit && <div className="td-stat-unit">{unit}</div>}
+      {loading ? (
+        <div className="td-skeleton-value" aria-hidden="true" />
+      ) : (
+        <div className="td-stat-value" style={accent ? { color: accent } : undefined}>
+          {value}
+        </div>
+      )}
+      {unit && !loading && <div className="td-stat-unit">{unit}</div>}
     </div>
   );
 });
@@ -140,7 +143,12 @@ const AttendanceCard = memo(function AttendanceCard({ attStatus, attMarking, onM
 });
 
 // ─── Incentive Dropdown ───────────────────────────────────────────────────────
-const IncentiveDropdown = memo(function IncentiveDropdown() {
+// FIX Bug 2 (perf): per-month cache via cacheRef. Reopening the same month
+// is now instant — no spinner, no refetch. Cache for the *current* month is
+// invalidated automatically when `refreshSignal` changes (new entry saved or
+// an existing entry edited — both only ever touch the current month, since
+// the dashboard's fetchEntries() always queries this month).
+const IncentiveDropdown = memo(function IncentiveDropdown({ refreshSignal }) {
   const [open,       setOpen]       = useState(false);
   const [year,       setYear]       = useState(NOW.getFullYear());
   const [month,      setMonth]      = useState(NOW.getMonth() + 1);
@@ -148,15 +156,25 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
   const [loading,    setLoading]    = useState(false);
   const [fetchError, setFetchError] = useState("");
 
+  const cacheRef          = useRef({});
+  const prevRefreshRef    = useRef(refreshSignal);
+
   const isCurrentMonth =
     year  === NOW.getFullYear() &&
     month === NOW.getMonth() + 1;
 
-  const fetchIncentive = useCallback(async () => {
+  const fetchIncentive = useCallback(async (force = false) => {
+    const key = `${year}-${month}`;
+    if (!force && cacheRef.current[key]) {
+      setData(cacheRef.current[key]);
+      setFetchError("");
+      return;
+    }
     setLoading(true);
     setFetchError("");
     try {
       const res = await api.get(`/api/entries/my/incentive?year=${year}&month=${month}`);
+      cacheRef.current[key] = res.data;
       setData(res.data);
     } catch (err) {
       console.error("Incentive fetch error:", err);
@@ -169,6 +187,15 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
   useEffect(() => {
     if (open) fetchIncentive();
   }, [open, fetchIncentive]);
+
+  // Invalidate current-month cache when parent signals a save/edit.
+  useEffect(() => {
+    if (refreshSignal === prevRefreshRef.current) return;
+    prevRefreshRef.current = refreshSignal;
+    const curKey = `${NOW.getFullYear()}-${NOW.getMonth() + 1}`;
+    delete cacheRef.current[curKey];
+    if (open && isCurrentMonth) fetchIncentive(true);
+  }, [refreshSignal, open, isCurrentMonth, fetchIncentive]);
 
   const goBack = useCallback(() => {
     if (month === 1) { setYear((y) => y - 1); setMonth(12); }
@@ -188,20 +215,13 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
 
   const toggleOpen = useCallback(() => setOpen((o) => !o), []);
 
-  // ── FIX Bug 4: use data.nextSlab from API instead of local SLABS constant ──
-  // progressTarget is null when at max slab — drives conditional rendering below.
   const currentSlabNum = data?.slabNumber ?? 0;
   const progressTarget = data?.nextSlab ?? null;  // null = at max slab
 
-  // ── FIX Bug 4: hoursMet/labourMet for totals cell coloring ───────────────
-  // Green when in any slab (slabNumber > 0 means both thresholds were met).
-  // Old code hardcoded Mechanic Slab 1 thresholds (100h / ₹47500) — wrong for helpers.
   const hoursMet  = data ? data.slabNumber > 0 : false;
   const labourMet = data ? data.slabNumber > 0 : false;
   const bothMet   = data ? data.slabNumber > 0 : false;
 
-  // ── FIX Bug 4: separate "next threshold" vars for the progress warning ────
-  // The warning shows when ONE next-threshold is met but not the other.
   const nextHoursMet  = progressTarget ? data.totalHours  > progressTarget.minHours  : false;
   const nextLabourMet = progressTarget ? data.totalLabour > progressTarget.minLabour : false;
 
@@ -228,7 +248,8 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
 
           {loading ? (
             <div className="td-incent-placeholder">
-              <p className="td-incent-placeholder-text">Loading…</p>
+              <div className="td-skeleton-block" style={{ marginBottom: 12 }} />
+              <div className="td-skeleton-block" style={{ width: "70%" }} />
             </div>
           ) : fetchError ? (
             <div className="td-incent-placeholder">
@@ -255,19 +276,16 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
                 ))}
               </div>
 
-              {/* ── FIX Bug 4: progress section — uses progressTarget (null = max slab) ── */}
               <div style={{ marginBottom: "20px" }}>
                 <div style={{
                   fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
                   textTransform: "uppercase", color: "#94A3B8", marginBottom: "14px",
                 }}>
-                  {/* FIX: was `currentSlabNum === 3` — broke at Slab 4 */}
                   {progressTarget === null
                     ? "Max slab achieved"
                     : `Progress toward Slab ${progressTarget.slab}`}
                 </div>
 
-                {/* FIX Bug 4: ThresholdBars only render when there IS a next target */}
                 {progressTarget !== null && (
                   <>
                     <ThresholdBar
@@ -284,7 +302,6 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
                       met={data.totalLabour > progressTarget.minLabour}
                       formatValue={(v) => fmtMoney(v)}
                     />
-                    {/* FIX Bug 4: warning uses nextHoursMet/nextLabourMet, not the slab-coloring booleans */}
                     {(nextHoursMet !== nextLabourMet) && (
                       <div className="td-both-warning">
                         Both hours and labour must exceed their threshold for a slab to apply.
@@ -308,7 +325,6 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
               <div className="td-breakdown">
                 {[
                   {
-                    // FIX Bug 4: show slab4Bonus inline when present
                     label: `Base Incentive${data.slab4Bonus > 0
                       ? ` (incl. ₹${data.slab4Bonus.toLocaleString()} variable)`
                       : ""}`,
@@ -327,7 +343,6 @@ const IncentiveDropdown = memo(function IncentiveDropdown() {
                     value: data.noLeaveBonus > 0 ? `+₹${data.noLeaveBonus.toLocaleString()}` : "—",
                     dimmed: data.noLeaveBonus === 0,
                   },
-                  // FIX Bug 5: was hardcoded "₹10,000 max" — wrong for helper tier (cap = ₹7,000)
                   ...(data.isCapped ? [{
                     label: "Cap Applied",
                     value: `₹${(data.maxIncentive ?? 10000).toLocaleString()} max`,
@@ -373,7 +388,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
     formState: { errors },
   } = useForm();
 
-  // Live vehicle number value — drives the normalization preview
   const vehicleNoValue = watch("vehicleNo", "");
 
   useEffect(() => {
@@ -405,7 +419,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
           </div>
         )}
 
-        {/* ── Sticky header ── */}
         <div className="em-header">
           <div className="em-drag-handle" />
           <div className="em-header-row">
@@ -427,7 +440,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
           </div>
         </div>
 
-        {/* ── Form body ── */}
         <form onSubmit={handleSubmit(onSave)} noValidate className="em-body">
 
           {error && (
@@ -436,7 +448,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             </div>
           )}
 
-          {/* ── Date + Category ── */}
           <div className="em-row">
             <div>
               <label className="em-label">
@@ -466,17 +477,13 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             </div>
           </div>
 
-          {/* ── Divider ── */}
           <div className="em-divider">
             <div className="em-divider-line" />
             <span className="em-divider-label">Job Details</span>
             <div className="em-divider-line" />
           </div>
 
-          {/* ── Vehicle No + JC No ── */}
           <div className="em-row">
-
-            {/* ── Vehicle No — REQUIRED ── */}
             <div>
               <label className="em-label">
                 Vehicle No <span className="em-required">*</span>
@@ -517,14 +524,12 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             </div>
           </div>
 
-          {/* ── Divider ── */}
           <div className="em-divider">
             <div className="em-divider-line" />
             <span className="em-divider-label">Financials &amp; Hours</span>
             <div className="em-divider-line" />
           </div>
 
-          {/* ── Labour Amount ── */}
           <div>
             <label className="em-label">
               Labour Amount <span className="em-required">*</span>
@@ -548,7 +553,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             {errors.labourAmount && <p className="em-field-err">{errors.labourAmount.message}</p>}
           </div>
 
-          {/* ── Hours Worked ── */}
           <div>
             <label className="em-label">
               Hours Worked <span className="em-required">*</span>
@@ -572,7 +576,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             {errors.hoursWorked && <p className="em-field-err">{errors.hoursWorked.message}</p>}
           </div>
 
-          {/* ── Leave Days ── */}
           <div>
             <label className="em-label">Leave Days</label>
             <div style={{ position: "relative" }}>
@@ -594,7 +597,6 @@ function EditEntryModal({ entry, onSave, onClose, saving, error }) {
             {errors.leaveDays && <p className="em-field-err">{errors.leaveDays.message}</p>}
           </div>
 
-          {/* ── Save ── */}
           <button type="submit" className="em-submit" disabled={saving}>
             {saving
               ? <><span className="em-spinner" />Saving…</>
@@ -621,7 +623,6 @@ export default function TechnicianDashboard() {
   const { user } = useAuthStore();
 
   const [entries,          setEntries]          = useState([]);
-  // FIX Bug 1+2: track real server total separately from loaded entries array
   const [entriesTotal,     setEntriesTotal]     = useState(0);
   const [loading,          setLoading]          = useState(true);
   const [showForm,         setShowForm]         = useState(false);
@@ -634,24 +635,25 @@ export default function TechnicianDashboard() {
   const [editSaving,   setEditSaving]   = useState(false);
   const [editError,    setEditError]    = useState("");
 
-  // FIX Bug 1: was `setEntries(res.data)` — backend returns { entries, total, page, pages }
-  // not a plain array. That caused entries.filter() to throw TypeError immediately.
-  // FIX Bug 2: was no pagination params — backend defaulted to page=1, limit=20.
-  // Now requests limit=100 (max the backend allows) so all entries are loaded.
-const fetchEntries = useCallback(async () => {
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-  try {
-   const res = await api.get(`/api/entries/my?year=${year}&month=${month}&limit=100`);
-    setEntries(res.data.entries || []);
-    setEntriesTotal(res.data.total || 0);
-  } catch (err) {
-    console.error("Entries fetch error:", err);
-  } finally {
-    setLoading(false);
-  }
-}, []);
+  // FIX: increments on every save/edit. IncentiveDropdown watches this to
+  // invalidate its own per-month cache without the two components needing
+  // to share fetch logic.
+  const [refreshSignal, setRefreshSignal] = useState(0);
+
+  const fetchEntries = useCallback(async () => {
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth() + 1;
+    try {
+      const res = await api.get(`/api/entries/my?year=${year}&month=${month}&limit=100`);
+      setEntries(res.data.entries || []);
+      setEntriesTotal(res.data.total || 0);
+    } catch (err) {
+      console.error("Entries fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const fetchCurrentIncentive = useCallback(async () => {
     try {
@@ -699,9 +701,20 @@ const fetchEntries = useCallback(async () => {
     if (user?.profileComplete) fetchAttStatus();
   }, [user?.profileComplete, fetchAttStatus]);
 
-  const handleSaved = useCallback(() => {
+  // FIX (perceived perf): accepts the newly created entry from EntryForm and
+  // prepends it to local state immediately — the row appears the instant
+  // Save is tapped, not after the round-trip GET completes. fetchEntries()
+  // still runs right after to reconcile with the server in the background.
+  // Falls back to the old behavior (no optimistic row) if EntryForm hasn't
+  // been patched to pass the entry back yet — nothing breaks either way.
+  const handleSaved = useCallback((newEntry) => {
+    if (newEntry) {
+      setEntries((prev) => [newEntry, ...prev]);
+      setEntriesTotal((prev) => prev + 1);
+    }
     fetchEntries();
     fetchCurrentIncentive();
+    setRefreshSignal((s) => s + 1);
   }, [fetchEntries, fetchCurrentIncentive]);
 
   const handleOpenForm  = useCallback(() => setShowForm(true),  []);
@@ -735,6 +748,7 @@ const fetchEntries = useCallback(async () => {
         prev.map((e) => (e._id === editingEntry._id ? res.data.entry : e))
       );
       fetchCurrentIncentive();
+      setRefreshSignal((s) => s + 1);
       setEditingEntry(null);
     } catch (err) {
       setEditError(err.response?.data?.message || "Failed to update. Please try again.");
@@ -743,11 +757,15 @@ const fetchEntries = useCallback(async () => {
     }
   }, [editSaving, editingEntry, fetchCurrentIncentive]);
 
+  const totalHours    = useMemo(() => entries.reduce((s, e) => s + (e.hoursWorked  || 0), 0), [entries]);
+  const totalLabour   = useMemo(() => entries.reduce((s, e) => s + (e.labourAmount || 0), 0), [entries]);
+  const totalLeave    = useMemo(() => entries.reduce((s, e) => s + (e.leaveDays    || 0), 0), [entries]);
+  const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size, [entries]);
 
- const totalHours    = useMemo(() => entries.reduce((s, e) => s + (e.hoursWorked  || 0), 0), [entries]);
-const totalLabour   = useMemo(() => entries.reduce((s, e) => s + (e.labourAmount || 0), 0), [entries]);
-const totalLeave    = useMemo(() => entries.reduce((s, e) => s + (e.leaveDays    || 0), 0), [entries]);
-const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filter(Boolean)).size, [entries]);
+  // FIX Bug 3: own loading flag — was riding on the entries `loading` state,
+  // which fetches independently of currentIncentive and could show a stale
+  // value or a needless dash depending on which request won the race.
+  const incentiveLoading = currentIncentive === null;
   const incentiveDisplay = useMemo(() => {
     if (currentIncentive === null) return "—";
     if (currentIncentive === 0)    return "₹0";
@@ -761,13 +779,20 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
 
   const currentMonthLabel = `${MONTH_NAMES[NOW.getMonth()]} ${NOW.getFullYear()}`;
 
+  // FIX (was the 2-state Mechanic/Helper badge from a previous pass — the
+  // real system has 4 technician types). Mechanic/Electrician get a solid
+  // fill; their Helper variants get a lighter outline in the same color
+  // family, so the hierarchy reads visually, not just from the text.
+  const typeSlug = user?.technicianType
+    ? user.technicianType.toLowerCase().replace(/\s+/g, "-")
+    : null;
+
   return (
     <div className="td-page">
       {needsProfile && <ProfileSetupModal />}
       {needsType    && <TechnicianTypeModal />}
       <Navbar />
 
-      {/* ── Page header ── */}
       <div className="td-page-header td-a1">
         <div className="td-eyebrow">Technician Dashboard</div>
         <h1 className="td-name">{user?.name?.split(" ")[0]}</h1>
@@ -778,15 +803,14 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
           {user?.branch && (
             <span className="td-branch-badge">{user.branch}</span>
           )}
-          {user?.technicianType && (
-            <span className="td-branch-badge" style={{ color: "#1E3A8A", borderColor: "#1E3A8A" }}>
+          {typeSlug && (
+            <span className="td-type-badge" data-type={typeSlug}>
               {user.technicianType}
             </span>
           )}
         </div>
       </div>
 
-      {/* ── Content ── */}
       <div style={{ padding: "0 0 100px", maxWidth: "600px", margin: "0 auto" }}>
 
         {!needsProfile && (
@@ -800,30 +824,28 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
         <div className="td-gate-wrap">
           {isGated && <div className="td-gate-overlay" />}
 
-          {/* ── Stats grid ── */}
-        <div className="td-stat-grid td-a2">
-  <StatCard label="Entries"         value={loading ? "—" : entries.length} />
-  <StatCard label="Hours Worked"    value={loading ? "—" : totalHours}     unit={loading ? "" : "hrs"} />
-  <StatCard label="Labour Earned"   value={loading ? "—" : fmtMoney(totalLabour)} />
-  <StatCard label="Leave Days"      value={loading ? "—" : totalLeave}     unit={loading ? "" : "days"} />
-  <StatCard label="Vehicles Served" value={loading ? "—" : totalVehicles}  unit={loading ? "" : "unique"} />
-  <StatCard
-    label="Projected Incentive"
-    value={incentiveDisplay}
-    unit="this month"
-    accent={currentIncentive > 0 ? "#16A34A" : undefined}
-    accentCard={currentIncentive > 0}
-  />
-</div>
+          <div className="td-stat-grid td-a2">
+            <StatCard label="Entries"         value={entries.length}        loading={loading} />
+            <StatCard label="Hours Worked"    value={totalHours}     unit="hrs"    loading={loading} />
+            <StatCard label="Labour Earned"   value={fmtMoney(totalLabour)} loading={loading} />
+            <StatCard label="Leave Days"      value={totalLeave}     unit="days"   loading={loading} />
+            <StatCard label="Vehicles Served" value={totalVehicles}  unit="unique" loading={loading} />
+            <StatCard
+              label="Projected Incentive"
+              value={incentiveDisplay}
+              unit="this month"
+              accent={currentIncentive > 0 ? "#16A34A" : undefined}
+              accentCard={currentIncentive > 0}
+              loading={incentiveLoading}
+            />
+          </div>
 
-          {/* ── Month context banner ── */}
           <div className="td-month-banner td-a2">
             <div className="td-month-banner-dot" />
             <span className="td-month-banner-text">Showing stats for</span>
             <span className="td-month-banner-value">{currentMonthLabel}</span>
           </div>
 
-          {/* ── New Entry button ── */}
           <button
             className="td-new-entry-btn td-a3"
             onClick={() => entryAllowed && handleOpenForm()}
@@ -833,17 +855,13 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
             New Entry
           </button>
 
-          {/* ── Monthly Incentive dropdown ── */}
           <div className="td-a4">
-            <IncentiveDropdown />
+            <IncentiveDropdown refreshSignal={refreshSignal} />
           </div>
 
-          {/* ── Work entries section ── */}
           <div className="td-section td-a5">
             <div className="td-section-header">
               <span className="td-section-label">All Work Entries</span>
-              {/* FIX Bug 2: was entries.length — only showed loaded count (≤20/100).
-                  entriesTotal comes from res.data.total — real DB count. */}
               <span className="td-section-count">{entriesTotal} total</span>
             </div>
             {loading ? (
@@ -851,7 +869,7 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
             ) : (
               <EntryTable
                 entries={entries}
-              
+                entriesTotal={entriesTotal}
                 onEdit={handleOpenEdit}
               />
             )}
@@ -859,7 +877,6 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
         </div>
       </div>
 
-      {/* ── FAB ── */}
       <button
         className="td-fab"
         onClick={() => entryAllowed && handleOpenForm()}
@@ -869,12 +886,10 @@ const totalVehicles = useMemo(() => new Set(entries.map((e) => e.vehicleNo).filt
         +
       </button>
 
-      {/* ── New entry form modal ── */}
       {showForm && (
         <EntryForm onClose={handleCloseForm} onSaved={handleSaved} />
       )}
 
-      {/* ── Edit entry modal ── */}
       <EditEntryModal
         entry={editingEntry}
         onSave={handleSaveEdit}
