@@ -13,6 +13,7 @@ const {
   exportVehicleLogs,
   editUser,
   deleteUser,
+  adminResetPassword,   // ← ADD
 } = require("../controllers/adminController");
 
 const {
@@ -37,11 +38,11 @@ router.use(protect, adminOrAbove, branchGuard);
 router.get   ("/branches",     superAdminOnly, getBranches);
 router.put   ("/user/:userId", superAdminOnly, editUser);
 router.delete("/user/:userId", superAdminOnly, deleteUser);
-
 // ── Both admin + superadmin ──────────────────────────────────────────────────
 router.get("/analytics",                          getAnalytics);
 router.get("/analytics/vehicle",                  getVehicleAnalytics);
 router.get("/analytics/vehicle/export",           exportVehicleLogs);
+router.post("/technicians/:userId/reset-password", adminResetPassword);
 // NOTE: /export route MUST appear before the base /analytics/attendance route.
 // Express matches paths in registration order — without this ordering, a request
 // to /analytics/attendance/export would never reach this handler.
