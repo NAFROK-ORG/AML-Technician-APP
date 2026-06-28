@@ -29,4 +29,14 @@ const authLimiter = rateLimit({
   message: { message: "Too many login attempts. Please try again in 15 minutes." },
 });
 
-module.exports = { generalLimiter, authLimiter };
+// Add this block after the existing authLimiter definition:
+const forgotPasswordLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000, // 15 minutes
+  limit:           3,               // max 3 reset attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { message: "Too many reset requests. Please try again in 15 minutes." },
+});
+
+// Replace the existing module.exports line:
+module.exports = { generalLimiter, authLimiter, forgotPasswordLimiter };
