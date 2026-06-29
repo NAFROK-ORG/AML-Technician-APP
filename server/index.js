@@ -81,25 +81,15 @@ Sentry.setupExpressErrorHandler(app);
 // deleteMany is still in progress (slow Mongo, cold restart race, etc.)
 let cleanupRunning = false;
 
-// Monthly cleanup — 5th of every month at 00:00 UTC (05:30 AM IST).
+// Monthly cleanup — 1st of every month at 00:00 UTC (05:30 AM IST).
 //
 // CUTOFF: start of the previous calendar month (UTC midnight, 1st).
-//   Example: runs June 5  →  cutoff = May 1  →  deletes April and earlier.
-//   May's full records are preserved. June's partial records are preserved.
-//   Running on the 5th gives branch managers a 5-day buffer to review
-//   the previous month before anything is touched.
-//
-// WHY NOT the 1st of the month: cutoff is always "start of previous month"
-//   regardless of run date, so data safety is identical — but the 5th gives
-//   ops time to manually intervene if something looks wrong before cleanup fires.
-//
-// Date.UTC(-1 month): when month = 0 (January), month - 1 = -1.
-//   Date.UTC handles this correctly — rolls back to December of prior year.
-//   Verified: new Date(Date.UTC(2025, -1, 1)) === 2024-12-01T00:00:00.000Z
+//   Example: runs June 1  →  cutoff = May 1  →  deletes April and earlier.
+//   May's full records are preserved. June's records are preserved.
 //
 // ONLY deletes from the `attendance` collection.
 // Never touches entries, users, security logs, or audit logs.
-cron.schedule("0 0 5 * *", async () => {
+cron.schedule("0 0 1 * *", async () => {
   if (cleanupRunning) {
     console.warn("[Cron] Monthly attendance cleanup already running — skipping this trigger.");
     return;
