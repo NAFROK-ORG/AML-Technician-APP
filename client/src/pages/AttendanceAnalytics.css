@@ -1,22 +1,85 @@
 /* AttendanceAnalytics.css — scoped to the "ata-" prefix, isolated from AdminAttendance.css */
 
-@keyframes ata-spin { to { transform: rotate(360deg); } }
+@keyframes ata-spin    { to { transform: rotate(360deg); } }
 
-.ata-card {
-  background: #FFFFFF;
+/* ── Skeleton shimmer ───────────────────────────────────────────────────────── */
+@keyframes ataShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ata-skeleton-shimmer {
+  background: linear-gradient(90deg, #E0E6F0 25%, #EEF2F7 50%, #E0E6F0 75%);
+  background-size: 200% 100%;
+  animation: ataShimmer 1.4s ease-in-out infinite;
   border: 1px solid #DDE3EE;
-  padding: 16px;
+}
+
+/* Title placeholder — narrow bar representing the 9px uppercase label */
+.ata-skeleton-title {
+  height: 9px;
+  width: 150px;
+  background: linear-gradient(90deg, #E0E6F0 25%, #EEF2F7 50%, #E0E6F0 75%);
+  background-size: 200% 100%;
+  animation: ataShimmer 1.4s ease-in-out infinite;
   margin-bottom: 16px;
 }
 
+/* KPI strip skeleton — same 4-column structure as the real strip */
+.ata-skeleton-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ata-skeleton-kpi-cell   { height: 72px; }
+
+/* Chart placeholders — heights match real card approximate heights */
+.ata-skeleton-chart-tall { height: 200px; }
+.ata-skeleton-chart-med  { height: 180px; }
+.ata-skeleton-table      { height: 300px; margin-bottom: 0; }
+
+/* Superadmin all-branches skeleton */
+.ata-skeleton-branch-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.ata-skeleton-branch-card { height: 92px; }
+
+@media (max-width: 560px) {
+  .ata-skeleton-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Base card ─────────────────────────────────────────────────────────────── */
+.ata-card {
+  background: #FFFFFF;
+  border: 1px solid #DDE3EE;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+/* ── Card title — aligned to IBM Plex Sans 9px system used across all pages ── */
+/* Previously Barlow Condensed 13px — this was the only card in the whole app  */
+/* using a different font for section headers. Unified here.                    */
 .ata-card-title {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #374151;
-  margin-bottom: 12px;
+  color: #6B7A99;
+  margin-bottom: 14px;
+}
+.ata-card-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: #1E3A8A;
+  flex-shrink: 0;
 }
 
 .ata-empty-text {
@@ -27,79 +90,139 @@
   padding: 20px 0;
 }
 
+/* ── Grid ──────────────────────────────────────────────────────────────────── */
 .ata-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  margin-bottom: 16px;
 }
 @media (max-width: 680px) {
   .ata-grid-2 { grid-template-columns: 1fr; }
 }
 
-/* ── KPI strip ── */
+/* ── KPI strip — real gap + per-cell border (gap-trick removed) ─────────────  */
+/* 4 cells, 4 columns — always exact fit, no orphan risk.                       */
 .ata-kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: #DDE3EE;
-  border: 1px solid #DDE3EE;
+  gap: 8px;
   margin-bottom: 16px;
 }
-.ata-kpi-cell { background: #FFFFFF; padding: 12px 10px; }
-.ata-kpi-label { font-size: 8px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #94A3B8; margin-bottom: 4px; }
-.ata-kpi-value { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; line-height: 1; }
-.ata-kpi-sub { font-size: 9px; color: #94A3B8; margin-top: 3px; }
+.ata-kpi-cell {
+  background: #FFFFFF;
+  border: 1px solid #DDE3EE;
+  border-left: 3px solid #1E3A8A;
+  padding: 14px 12px;
+}
+.ata-kpi-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94A3B8;
+  margin-bottom: 4px;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.ata-kpi-value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+.ata-kpi-sub {
+  font-size: 9px;
+  color: #94A3B8;
+  margin-top: 3px;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
 @media (max-width: 560px) {
   .ata-kpi-strip { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ── Legend ── */
-.ata-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 9px; color: #6B7A99; font-weight: 600; }
+/* ── Legend ────────────────────────────────────────────────────────────────── */
+.ata-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 9px;
+  color: #6B7A99;
+  font-weight: 600;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
 .ata-legend span { display: flex; align-items: center; gap: 5px; }
-.ata-legend i { width: 8px; height: 8px; display: inline-block; border-radius: 1px; }
+.ata-legend i    { width: 8px; height: 8px; display: inline-block; flex-shrink: 0; }
 
-/* ── Day-of-week ── */
-.ata-dow-row { display: flex; justify-content: space-between; align-items: flex-end; height: 100px; gap: 6px; }
-.ata-dow-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
-.ata-dow-bar { width: 70%; border-radius: 2px 2px 0 0; transition: height 0.2s; }
-.ata-dow-label { font-size: 9px; font-weight: 700; color: #374151; margin-top: 6px; }
-.ata-dow-pct { font-size: 8px; color: #94A3B8; }
-.ata-flag-text { font-size: 11px; color: #D97706; font-weight: 600; margin-top: 12px; }
+/* ── Day-of-week chart ─────────────────────────────────────────────────────── */
+.ata-dow-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 100px;
+  gap: 6px;
+}
+.ata-dow-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+.ata-dow-bar      { width: 70%; transition: height 0.2s; }
+.ata-dow-label    { font-size: 9px; font-weight: 700; color: #374151; margin-top: 6px; }
+.ata-dow-pct      { font-size: 8px; color: #94A3B8; }
+.ata-flag-text    { font-size: 11px; color: #D97706; font-weight: 600; margin-top: 12px; }
 
-/* ── Mark time histogram ── */
-.ata-hist-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.ata-hist-label { font-size: 10px; color: #6B7A99; width: 78px; flex-shrink: 0; }
-.ata-hist-track { flex: 1; height: 14px; background: #F1F5F9; border-radius: 2px; overflow: hidden; }
-.ata-hist-fill { height: 100%; background: #1E3A8A; border-radius: 2px; }
-.ata-hist-count { font-size: 11px; font-weight: 700; color: #0A1628; width: 20px; text-align: right; }
+/* ── Mark time histogram (legacy class names kept for backward compat) ──────── */
+.ata-hist-row    { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ata-hist-label  { font-size: 10px; color: #6B7A99; width: 78px; flex-shrink: 0; }
+.ata-hist-track  { flex: 1; height: 14px; background: #F1F5F9; overflow: hidden; border: 1px solid #DDE3EE; }
+.ata-hist-fill   { height: 100%; background: #1E3A8A; }
+.ata-hist-count  { font-size: 11px; font-weight: 700; color: #0A1628; width: 20px; text-align: right; }
 
-/* ── Ghost panel ── */
-.ata-ghost-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #F1F5F9; gap: 12px; }
+/* ── Ghost panel ───────────────────────────────────────────────────────────── */
+.ata-ghost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid #F1F5F9;
+  gap: 12px;
+}
 .ata-ghost-row:last-child { border-bottom: none; }
-.ata-ghost-name { font-size: 12px; font-weight: 700; color: #0A1628; flex-shrink: 0; }
+.ata-ghost-name  { font-size: 12px; font-weight: 700; color: #0A1628; flex-shrink: 0; }
 .ata-ghost-dates { font-size: 10px; color: #D97706; text-align: right; }
 
-/* ── Technician table ── */
+/* ── Technician table ──────────────────────────────────────────────────────── */
 .ata-table-scroll { overflow-x: auto; }
 .ata-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .ata-table th {
-  text-align: left; padding: 8px 10px; font-size: 8px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: #94A3B8;
-  border-bottom: 1px solid #DDE3EE; white-space: nowrap;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #94A3B8;
+  border-bottom: 1px solid #DDE3EE;
+  white-space: nowrap;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
-.ata-table td { padding: 9px 10px; border-bottom: 1px solid #F1F5F9; white-space: nowrap; }
+.ata-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #F1F5F9;
+  white-space: nowrap;
+}
 .ata-tech-name { font-weight: 700; color: #0A1628; }
-.ata-tech-id { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #6B7A99; }
-.ata-dim { color: #6B7A99; }
-.ata-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 2px; display: inline-block; }
+.ata-tech-id   { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #6B7A99; }
+.ata-dim       { color: #6B7A99; }
+
+/* Badges — sharp corners match the brand's zero-radius system */
+.ata-badge      { font-size: 9px; font-weight: 700; padding: 2px 7px; display: inline-block; }
 .ata-badge-warn { color: #D97706; background: #FEF3C7; border: 1px solid #FDE68A; }
+.ata-badge-sun  { color: #7C3AED; background: #EDE9FE; border: 1px solid #C4B5FD; }
 
-/* ── Sunday shift badge ── */
-/* Distinct from ata-badge-warn (amber) — purple signals "optional overtime", not a problem */
-.ata-badge-sun { color: #7C3AED; background: #EDE9FE; border: 1px solid #C4B5FD; }
-
-/* ── Sunday shift note ── */
-/* Sits between KPI strip and charts; quiet left-border callout, not an alert */
+/* ── Sunday shift note ─────────────────────────────────────────────────────── */
 .ata-sunday-note {
   font-size: 11px;
   color: #6B7A99;
@@ -107,39 +230,83 @@
   padding: 8px 12px;
   background: #F8FAFC;
   border-left: 2px solid #DDE3EE;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 
-/* ── Branch strip (superadmin selector) ── */
-.ata-branch-strip { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 16px; padding-bottom: 4px; }
+/* ── Branch strip (superadmin selector) ────────────────────────────────────── */
+.ata-branch-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Sharp corners — matches ab-branch-pill, aa-branch-pill across the app */
 .ata-branch-pill {
-  flex-shrink: 0; padding: 6px 14px; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid #DDE3EE;
-  background: #FFFFFF; color: #6B7A99; cursor: pointer; border-radius: 2px;
+  flex-shrink: 0;
+  padding: 7px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid #DDE3EE;
+  background: #FFFFFF;
+  color: #6B7A99;
+  cursor: pointer;
+  font-family: 'IBM Plex Sans', sans-serif;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
 }
-.ata-branch-pill.active { background: #1E3A8A; color: #FFFFFF; border-color: #1E3A8A; }
+.ata-branch-pill:hover:not(.active) {
+  border-color: #1E3A8A;
+  color: #1E3A8A;
+}
+.ata-branch-pill.active {
+  background: #1E3A8A;
+  color: #FFFFFF;
+  border-color: #1E3A8A;
+}
 
-/* ── Branch overview cards ── */
-.ata-branch-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+/* ── Branch overview cards (superadmin all-branches view) ──────────────────── */
+.ata-branch-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
 .ata-branch-card {
-  background: #F8FAFC; border: 1px solid #DDE3EE; padding: 12px; text-align: left;
-  cursor: pointer; border-radius: 2px; font-family: inherit;
+  background: #F8FAFC;
+  border: 1px solid #DDE3EE;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s;
 }
 .ata-branch-card:hover { border-color: #1E3A8A; }
-.ata-branch-rank { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #94A3B8; }
-.ata-branch-name { font-size: 11px; font-weight: 700; color: #0A1628; margin: 4px 0; }
+
+.ata-branch-rank { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #94A3B8; font-family: 'IBM Plex Sans', sans-serif; }
+.ata-branch-name { font-size: 11px; font-weight: 700; color: #0A1628; margin: 4px 0; font-family: 'IBM Plex Sans', sans-serif; }
 .ata-branch-rate { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; line-height: 1; }
-.ata-branch-meta { font-size: 9px; color: #6B7A99; margin-top: 4px; }
+.ata-branch-meta { font-size: 9px; color: #6B7A99; margin-top: 4px; font-family: 'IBM Plex Sans', sans-serif; }
 
-/* ── Heatmap ── */
-.ata-heatmap-scroll { overflow-x: auto; }
-.ata-heatmap { display: flex; flex-direction: column; gap: 3px; min-width: 600px; }
-.ata-heatmap-row { display: flex; align-items: center; gap: 3px; }
-.ata-heatmap-label { width: 90px; flex-shrink: 0; font-size: 9px; font-weight: 700; color: #374151; }
-.ata-heatmap-cell { width: 16px; height: 16px; border-radius: 1px; flex-shrink: 0; }
+/* ── Heatmap ───────────────────────────────────────────────────────────────── */
+.ata-heatmap-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ata-heatmap        { display: flex; flex-direction: column; gap: 3px; min-width: 600px; }
+.ata-heatmap-row    { display: flex; align-items: center; gap: 3px; }
+.ata-heatmap-label  { width: 90px; flex-shrink: 0; font-size: 9px; font-weight: 700; color: #374151; font-family: 'IBM Plex Sans', sans-serif; }
+.ata-heatmap-cell   { width: 16px; height: 16px; flex-shrink: 0; }
 
-/* ── Synchronous dips ── */
-.ata-dip-row { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid #F1F5F9; }
+/* ── Synchronous dips ──────────────────────────────────────────────────────── */
+.ata-dip-row {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid #F1F5F9;
+}
 .ata-dip-row:last-child { border-bottom: none; }
-.ata-dip-date { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #1E3A8A; width: 44px; flex-shrink: 0; }
+.ata-dip-date     { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #1E3A8A; width: 44px; flex-shrink: 0; }
 .ata-dip-branches { font-size: 11px; font-weight: 700; color: #0A1628; }
-.ata-dip-class { font-size: 10px; color: #6B7A99; margin-top: 2px; }
+.ata-dip-class    { font-size: 10px; color: #6B7A99; margin-top: 2px; }
