@@ -33,12 +33,11 @@ const STATUS_COLOR = {
 
 // [FIX-HEATMAP] Red threshold moved from 70% → 60%.
 // Updated in backend heatBand() too — both sides must stay in sync.
-// Legend labels updated below to match.
 const heatColor = (rate) => {
-  if (rate >= 90) return "#16A34A"; // green   — excellent
-  if (rate >= 75) return "#1E3A8A"; // navy    — good
-  if (rate >= 60) return "#D97706"; // amber   — at risk
-  return "#DC2626";                 // red     — below 60%
+  if (rate >= 90) return "#16A34A";
+  if (rate >= 75) return "#1E3A8A";
+  if (rate >= 60) return "#D97706";
+  return "#DC2626";
 };
 
 const monthLabel = () =>
@@ -52,21 +51,11 @@ const fmtDate = (iso) => {
 };
 
 // ─── CSV helpers ───────────────────────────────────────────────────────────────
-// Mirrors the escapeCsvField / buildCsv pattern from VehicleAnalytics —
-// one convention for CSV output across the whole app.
 const escapeCsv = (v) => {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-// Columns exported:
-//   Name | ID | Type | Days Present | Working Days (MTD) | Attendance Rate %
-//   Ghost Days | Before 8AM | 8–9 AM | 9–10 AM | After 10AM
-//   Avg Mark Time | Sunday Shifts | Consistency % | Status
-//
-// markBuckets come from the backend (added in this version of the controller).
-// If a row lacks markBuckets (e.g. old cached response), each bucket falls back
-// to 0 safely via the ?? operator — no crash, just empty columns.
 const buildAttendanceCsv = (rows) => {
   const headers = [
     "Name", "Technician ID", "Type",
@@ -97,6 +86,73 @@ const buildAttendanceCsv = (rows) => {
   }
   return lines.join("\r\n");
 };
+
+// ─── Skeleton loading state ───────────────────────────────────────────────────
+// Mirrors the exact layout the page renders post-load so the admin's eye maps
+// the content before data arrives. Branch skeleton matches BranchAnalyticsView
+// (KPI strip → 2×2 chart grid → table). allBranches skeleton matches
+// SuperadminAnalyticsView (branch cards → heatmap → dips).
+function AttendanceSkeleton({ allBranches = false }) {
+  if (allBranches) {
+    return (
+      <>
+        {/* Branch overview card */}
+        <div className="ata-card">
+          <div className="ata-skeleton-title" />
+          <div className="ata-skeleton-branch-cards">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="ata-skeleton-shimmer ata-skeleton-branch-card" />
+            ))}
+          </div>
+        </div>
+
+        {/* Heatmap card */}
+        <div className="ata-card">
+          <div className="ata-skeleton-title" />
+          <div
+            className="ata-skeleton-shimmer"
+            style={{ height: "180px" }}
+          />
+        </div>
+
+        {/* Dips card */}
+        <div className="ata-card">
+          <div className="ata-skeleton-title" />
+          <div
+            className="ata-skeleton-shimmer"
+            style={{ height: "100px" }}
+          />
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {/* KPI strip — 4 cells matching real strip */}
+      <div className="ata-skeleton-kpi-strip">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="ata-skeleton-shimmer ata-skeleton-kpi-cell" />
+        ))}
+      </div>
+
+      {/* Charts row 1: DailyTrend + DayOfWeek */}
+      <div className="ata-grid-2">
+        <div className="ata-skeleton-shimmer ata-skeleton-chart-tall" />
+        <div className="ata-skeleton-shimmer ata-skeleton-chart-tall" />
+      </div>
+
+      {/* Charts row 2: GhostPanel + MarkTime */}
+      <div className="ata-grid-2">
+        <div className="ata-skeleton-shimmer ata-skeleton-chart-med" />
+        <div className="ata-skeleton-shimmer ata-skeleton-chart-med" />
+      </div>
+
+      {/* Technician table */}
+      <div className="ata-skeleton-shimmer ata-skeleton-table" />
+    </>
+  );
+}
 
 // ─── KPI strip ────────────────────────────────────────────────────────────────
 function KpiStrip({ kpis }) {
@@ -163,12 +219,12 @@ function DailyTrendChart({ dailyTrend }) {
           const barH = Math.max(2, ((H - padBottom) * d.rate) / 100);
           const x    = i * (barW + barGap);
           const y    = H - padBottom - barH;
-          const fill = d.rate < 60 ? C.danger : C.navy; // [FIX-HEATMAP] was < 70
+          const fill = d.rate < 60 ? C.danger : C.navy;
           return (
             <g key={d.date}>
               <rect
                 x={x} y={y} width={barW} height={barH}
-                fill={fill} rx="1" opacity={d.rate < 60 ? 1 : 0.85}
+                fill={fill} rx="0" opacity={d.rate < 60 ? 1 : 0.85}
               >
                 <title>{`${fmtDate(d.date)} · ${d.present}/${d.total} present · ${d.rate}%`}</title>
               </rect>
@@ -182,7 +238,7 @@ function DailyTrendChart({ dailyTrend }) {
       </svg>
       <div className="ata-legend">
         <span><i style={{ background: C.navy }} /> normal</span>
-        <span><i style={{ background: C.danger }} /> below 60%</span>{/* [FIX-HEATMAP] was 70% */}
+        <span><i style={{ background: C.danger }} /> below 60%</span>
       </div>
     </div>
   );
@@ -217,26 +273,14 @@ function DayOfWeekChart({ dayOfWeekPattern }) {
 }
 
 // ─── Mark-time distribution ───────────────────────────────────────────────────
-// [FIX-MARKTIME] Complete redesign.
-//
-// Before: lateFlags was rendered as a single .join(" · ") string — dumped
-//         into a <div> as a paragraph. With 20+ names it became unreadable.
-//
-// After:  Distribution bars are color-coded per bucket severity.
-//         Percentage labels added alongside counts.
-//         Late flags rendered as a proper striped row list — one row per
-//         technician, name left-aligned, badge right-aligned. Scannable
-//         at a glance even with 30+ entries.
-//
-// LATE_FLAG_THRESHOLD = 3 (matches backend constant — must stay in sync
-// if the backend constant ever changes).
+// [FIX-MARKTIME] Redesigned: color-coded bars + late-flags as scannable list.
 const LATE_FLAG_THRESHOLD_DISPLAY = 3;
 
 const BUCKET_META = {
-  "Before 8AM": { color: "#16A34A", label: "Early"     },
-  "8–9 AM":     { color: "#1E3A8A", label: "On time"   },
-  "9–10 AM":    { color: "#D97706", label: "Late"       },
-  "After 10AM": { color: "#DC2626", label: "Very late"  },
+  "Before 8AM": { color: "#16A34A", label: "Early"    },
+  "8–9 AM":     { color: "#1E3A8A", label: "On time"  },
+  "9–10 AM":    { color: "#D97706", label: "Late"      },
+  "After 10AM": { color: "#DC2626", label: "Very late" },
 };
 
 function MarkTimeChart({ markTimeDistribution }) {
@@ -248,14 +292,12 @@ function MarkTimeChart({ markTimeDistribution }) {
     <div className="ata-card">
       <div className="ata-card-title">Mark time distribution (IST)</div>
 
-      {/* ── Distribution bars ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: lateFlags.length ? "16px" : 0 }}>
         {distribution.map((d) => {
           const meta = BUCKET_META[d.bucket] || { color: C.navy, label: "" };
           const pct  = total > 0 ? Math.round((d.count / total) * 100) : 0;
           return (
             <div key={d.bucket} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {/* Bucket label — fixed width so bars all start at the same X */}
               <span style={{
                 fontSize: "11px", fontWeight: 600, color: C.mid,
                 fontFamily: "'IBM Plex Sans', sans-serif",
@@ -264,8 +306,6 @@ function MarkTimeChart({ markTimeDistribution }) {
               }}>
                 {d.bucket}
               </span>
-
-              {/* Bar track */}
               <div style={{
                 flex: 1, height: "16px", background: C.borderL, position: "relative",
                 border: `1px solid ${C.border}`,
@@ -278,18 +318,13 @@ function MarkTimeChart({ markTimeDistribution }) {
                   transition: "width 0.4s ease",
                 }} />
               </div>
-
-              {/* Count */}
               <span style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: "12px", fontWeight: 700,
-                color: meta.color, width: "28px", textAlign: "right",
-                flexShrink: 0,
+                color: meta.color, width: "28px", textAlign: "right", flexShrink: 0,
               }}>
                 {d.count}
               </span>
-
-              {/* Percentage */}
               <span style={{
                 fontSize: "10px", color: C.dim,
                 width: "34px", flexShrink: 0,
@@ -302,28 +337,23 @@ function MarkTimeChart({ markTimeDistribution }) {
         })}
       </div>
 
-      {/* ── Late flags table ── */}
       {lateFlags.length > 0 && (
         <>
-          {/* Divider */}
           <div style={{ height: "1px", background: C.border, margin: "4px 0 12px" }} />
-
           <div style={{
             fontSize: "9px", fontWeight: 700, letterSpacing: "0.16em",
             textTransform: "uppercase", color: C.amber, marginBottom: "8px",
             display: "flex", alignItems: "center", gap: "6px",
+            fontFamily: "'IBM Plex Sans', sans-serif",
           }}>
             ⚠ After-10AM flags — marked late on ≥{LATE_FLAG_THRESHOLD_DISPLAY} days
           </div>
-
-          {/* Striped rows — name | late-days badge */}
           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
             {lateFlags.map((f, i) => (
               <div
                 key={f.name}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
+                  display: "flex", alignItems: "center",
                   justifyContent: "space-between",
                   padding: "6px 10px",
                   background: i % 2 === 0 ? C.cardAlt : C.card,
@@ -332,19 +362,15 @@ function MarkTimeChart({ markTimeDistribution }) {
               >
                 <span style={{
                   fontSize: "12px", color: C.mid,
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                  fontWeight: 500,
+                  fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 500,
                 }}>
                   {f.name}
                 </span>
                 <span style={{
                   fontFamily: "'IBM Plex Mono', monospace",
-                  fontSize: "11px", fontWeight: 700,
-                  color: "#92400E",
-                  background: "#FEF3C7",
-                  border: "1px solid #FCD34D",
-                  padding: "2px 8px",
-                  whiteSpace: "nowrap",
+                  fontSize: "11px", fontWeight: 700, color: "#92400E",
+                  background: "#FEF3C7", border: "1px solid #FCD34D",
+                  padding: "2px 8px", whiteSpace: "nowrap",
                 }}>
                   {f.lateDays}d
                 </span>
@@ -384,38 +410,28 @@ function GhostPanel({ ghostAttendance }) {
 }
 
 // ─── Technician table ─────────────────────────────────────────────────────────
-// [FIX-SORT] Title updated to "sorted by consistency" — matches backend sort.
-// [FIX-DAYS] Days column shows fraction + mini colour bar so rate is
-//            visible without reading the Rate % column separately.
+// [FIX-SORT] Sorted by consistency. [FIX-DAYS] Mini colour bar added.
 function TechnicianTable({ technicians }) {
   return (
     <div className="ata-card" style={{ padding: 0 }}>
-      <div className="ata-card-title" style={{ padding: "16px 16px 0" }}>
+      <div className="ata-card-title" style={{ padding: "16px 20px 0" }}>
         Technician breakdown · sorted by consistency
       </div>
       <div className="ata-table-scroll">
         <table className="ata-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Days</th>
-              <th>Rate</th>
-              <th>Avg Mark</th>
-              <th>Ghost</th>
-              <th>Sun</th>
-              <th>Consistency</th>
-              <th>Status</th>
+              <th>Name</th><th>Type</th><th>Days</th><th>Rate</th>
+              <th>Avg Mark</th><th>Ghost</th><th>Sun</th>
+              <th>Consistency</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
             {technicians.map((t) => {
-              // Mini bar colour mirrors the heatColor thresholds
               const barColor = t.rate >= 75 ? C.success : t.rate >= 60 ? C.amber : C.danger;
               const barPct   = t.workingDays > 0
                 ? Math.round((t.daysPresent / t.workingDays) * 100)
                 : 0;
-
               return (
                 <tr key={t.id}>
                   <td>
@@ -423,29 +439,20 @@ function TechnicianTable({ technicians }) {
                     <div className="ata-tech-id">{t.technicianId || "—"}</div>
                   </td>
                   <td className="ata-dim">{t.technicianType || "—"}</td>
-
-                  {/* [FIX-DAYS] Fraction + mini progress bar */}
                   <td>
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       <span style={{
                         fontFamily: "'IBM Plex Mono', monospace",
-                        fontSize: "12px", fontWeight: 700, color: C.ink,
-                        whiteSpace: "nowrap",
+                        fontSize: "12px", fontWeight: 700, color: C.ink, whiteSpace: "nowrap",
                       }}>
                         {t.daysPresent}
                         <span style={{ color: C.dim, fontWeight: 400 }}>/{t.workingDays}</span>
                       </span>
-                      {/* Mini bar — 48 px wide, 3 px tall */}
                       <div style={{ width: "48px", height: "3px", background: C.borderL }}>
-                        <div style={{
-                          height: "100%", width: `${barPct}%`,
-                          background: barColor,
-                          transition: "width 0.4s ease",
-                        }} />
+                        <div style={{ height: "100%", width: `${barPct}%`, background: barColor, transition: "width 0.4s ease" }} />
                       </div>
                     </div>
                   </td>
-
                   <td style={{ fontWeight: 700 }}>{t.rate}%</td>
                   <td className="ata-dim">{t.avgMarkTime || "—"}</td>
                   <td>
@@ -482,39 +489,27 @@ function TechnicianTable({ technicians }) {
 }
 
 // ─── Branch-scoped view ───────────────────────────────────────────────────────
-// [NEW-EXPORT] Export button added to the top-right header area.
-// State is local to BranchAnalyticsView — the export is a self-contained
-// action and doesn't need to bubble up to the page-level component.
-//
-// Export endpoint: GET /api/admin/analytics/attendance/export?branch=<BRANCH>
-// Response:  { branch, month, workingDaysSoFar, technicians[], totalCount }
-// CSV built client-side from response — consistent with exportTechnicianData
-// and exportVehicleLogs conventions in this codebase.
-//
-// exportError  → hard failure (network / 500), shown in red
-// exportNotice → soft info (empty branch), shown in amber
-// Both clear on the next export attempt.
+// [NEW-EXPORT] Export button — CSV built client-side from export endpoint.
+// exportError  → hard failure (network / 500), shown in red.
+// exportNotice → soft info (empty branch), shown in amber.
 function BranchAnalyticsView({ data }) {
-  const [exporting,     setExporting]     = useState(false);
-  const [exportError,   setExportError]   = useState("");
-  const [exportNotice,  setExportNotice]  = useState("");
+  const [exporting,    setExporting]    = useState(false);
+  const [exportError,  setExportError]  = useState("");
+  const [exportNotice, setExportNotice] = useState("");
 
   const handleExportCSV = async () => {
     setExporting(true);
     setExportError("");
     setExportNotice("");
-
     try {
       const res = await api.get("/api/admin/analytics/attendance/export", {
         params: { branch: data.branch },
       });
       const { technicians, branch, month } = res.data;
-
       if (!technicians.length) {
         setExportNotice("No technician data found for this month.");
         return;
       }
-
       const csv     = buildAttendanceCsv(technicians);
       const blobUrl = window.URL.createObjectURL(
         new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
@@ -564,23 +559,25 @@ function BranchAnalyticsView({ data }) {
 
       {/* ── Technician table + export ── */}
       <div className="ata-card" style={{ padding: 0 }}>
-        {/* Card header row — title left, export button right */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "16px 16px 0", flexWrap: "wrap", gap: "10px",
+          padding: "20px 20px 0", flexWrap: "wrap", gap: "10px",
         }}>
+          {/* Section header — matches ata-card-title visually (inline since this row
+              is a flex container sharing space with the export button) */}
           <div style={{
+            display: "flex", alignItems: "center", gap: "8px",
             fontSize: "9px", fontWeight: 700, letterSpacing: "0.2em",
             textTransform: "uppercase", color: C.muted,
             fontFamily: "'IBM Plex Sans', sans-serif",
           }}>
+            <div style={{ width: "3px", height: "12px", background: C.navy, flexShrink: 0 }} />
             Technician breakdown · sorted by consistency
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             {exportError  && <span style={{ fontSize: "10px", fontWeight: 600, color: C.danger }}>{exportError}</span>}
             {exportNotice && <span style={{ fontSize: "10px", fontWeight: 600, color: C.amber }}>{exportNotice}</span>}
-
             <button
               onClick={handleExportCSV}
               disabled={exporting}
@@ -616,13 +613,14 @@ function BranchAnalyticsView({ data }) {
                   borderTopColor: "transparent",
                   borderRadius: "50%",
                   animation: "ata-spin 0.7s linear infinite",
-                  flexShrink: 0,
-                  display: "inline-block",
+                  flexShrink: 0, display: "inline-block",
                 }} />
               ) : (
                 <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 1.5v8.2M8 9.7L4.6 6.3M8 9.7l3.4-3.4M2.5 12v1.2A1.8 1.8 0 0 0 4.3 15h7.4a1.8 1.8 0 0 0 1.8-1.8V12"
-                    stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M8 1.5v8.2M8 9.7L4.6 6.3M8 9.7l3.4-3.4M2.5 12v1.2A1.8 1.8 0 0 0 4.3 15h7.4a1.8 1.8 0 0 0 1.8-1.8V12"
+                    stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+                  />
                 </svg>
               )}
               {exporting ? "Preparing…" : "Export CSV · This Month"}
@@ -630,22 +628,13 @@ function BranchAnalyticsView({ data }) {
           </div>
         </div>
 
-        {/* Table — rendered directly here instead of TechnicianTable sub-component
-            so the header and table share the same ata-card container without
-            double-padding. TechnicianTable still used where there's no export btn. */}
         <div className="ata-table-scroll">
           <table className="ata-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Days</th>
-                <th>Rate</th>
-                <th>Avg Mark</th>
-                <th>Ghost</th>
-                <th>Sun</th>
-                <th>Consistency</th>
-                <th>Status</th>
+                <th>Name</th><th>Type</th><th>Days</th><th>Rate</th>
+                <th>Avg Mark</th><th>Ghost</th><th>Sun</th>
+                <th>Consistency</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -654,7 +643,6 @@ function BranchAnalyticsView({ data }) {
                 const barPct   = t.workingDays > 0
                   ? Math.round((t.daysPresent / t.workingDays) * 100)
                   : 0;
-
                 return (
                   <tr key={t.id}>
                     <td>
@@ -662,28 +650,20 @@ function BranchAnalyticsView({ data }) {
                       <div className="ata-tech-id">{t.technicianId || "—"}</div>
                     </td>
                     <td className="ata-dim">{t.technicianType || "—"}</td>
-
-                    {/* [FIX-DAYS] Fraction + mini bar */}
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         <span style={{
                           fontFamily: "'IBM Plex Mono', monospace",
-                          fontSize: "12px", fontWeight: 700, color: C.ink,
-                          whiteSpace: "nowrap",
+                          fontSize: "12px", fontWeight: 700, color: C.ink, whiteSpace: "nowrap",
                         }}>
                           {t.daysPresent}
                           <span style={{ color: C.dim, fontWeight: 400 }}>/{t.workingDays}</span>
                         </span>
                         <div style={{ width: "48px", height: "3px", background: C.borderL }}>
-                          <div style={{
-                            height: "100%", width: `${barPct}%`,
-                            background: barColor,
-                            transition: "width 0.4s ease",
-                          }} />
+                          <div style={{ height: "100%", width: `${barPct}%`, background: barColor, transition: "width 0.4s ease" }} />
                         </div>
                       </div>
                     </td>
-
                     <td style={{ fontWeight: 700 }}>{t.rate}%</td>
                     <td className="ata-dim">{t.avgMarkTime || "—"}</td>
                     <td>
@@ -847,25 +827,11 @@ export default function AttendanceAnalytics() {
   const isAllBranchesView = isSuperAdmin && !branchFilter;
 
   const renderContent = () => {
+    // ── Skeleton: mirrors exact layout of post-load view ──
+    // Branch view: KPI strip + 2×2 chart grid + table
+    // All-branches: branch overview cards + heatmap + dips
     if (loading) {
-      return (
-        <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{
-            width: "28px", height: "28px",
-            border: `2px solid ${C.border}`,
-            borderTop: `2px solid ${C.navy}`,
-            borderRadius: "50%",
-            margin: "0 auto 16px",
-            animation: "ata-spin 0.8s linear infinite",
-          }} />
-          <p style={{
-            fontSize: "10px", letterSpacing: "0.18em",
-            textTransform: "uppercase", fontWeight: 700, color: C.dim,
-          }}>
-            Loading analytics…
-          </p>
-        </div>
-      );
+      return <AttendanceSkeleton allBranches={isAllBranchesView} />;
     }
 
     if (error) {
@@ -886,7 +852,7 @@ export default function AttendanceAnalytics() {
       return <BranchAnalyticsView data={data} />;
     }
 
-    // Shape mismatch — transitioning; render nothing (loading was already cleared)
+    // Shape mismatch — transitioning; skeleton already handled above
     return null;
   };
 
@@ -920,6 +886,8 @@ export default function AttendanceAnalytics() {
         </div>
 
         {/* ── Branch pill strip (superadmin only) ── */}
+        {/* Rendered outside renderContent so the admin can switch branches
+            while data is loading without waiting for the fetch to finish. */}
         {isSuperAdmin && (
           <div className="ata-branch-strip">
             <button
