@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import api from "../api/axios";
 import { useAuthStore } from "../store/authStore";
 import "./AdminBranchDashboard.css";
+
 /* ─── Corporate light tokens ──────────────────────────────────────── */
 const C = {
   pageBg:  "#EEF2F7",
@@ -36,15 +37,29 @@ const CAT = {
   "SCHEDULE SERVICE": { bar: "#374151", text: "#1F2937" },
 };
 
-/* ─── Stat definitions ───────────────────────────────────────────── */
+/* ─── Stat definitions — ordered by admin psychology ─────────────────
+ *
+ * Row 1 (4 cards) — PRIMARY: answers "what happened this month?"
+ *   Total Labour | Job Cards | Hours Worked | Technicians
+ *   (money → volume → time → people — the four numbers an admin
+ *   wants the instant they open this page)
+ *
+ * Row 2 (3 cards) — SECONDARY: answers "how efficiently?"
+ *   Incentives Paid | Avg Hours / Tech | Leave Days
+ *   (cost → per-person efficiency → HR drag)
+ *
+ * 7 stats in a 4-column grid = 4 + 3. With real gap + per-card border
+ * there are no ghost cells — the last row's 3 cards are intentionally
+ * the secondary metrics, not a layout accident.
+ ─────────────────────────────────────────────────────────────────── */
 const STATS = [
+  { key: "totalLabour",           label: "Total Labour",     unit: "",        accent: C.amber   },
+  { key: "totalEntries",          label: "Job Cards",        unit: "total",   accent: "#1E40AF" },
+  { key: "totalHours",            label: "Hours Worked",     unit: "hrs",     accent: C.success },
   { key: "technicianCount",       label: "Technicians",      unit: "",        accent: C.navy    },
-  { key: "totalEntries",          label: "Job Cards",         unit: "total",   accent: "#1E40AF" },
-  { key: "totalHours",            label: "Hours Worked",      unit: "hrs",     accent: C.success },
-  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech",  unit: "hrs avg", accent: "#15803D" },
-  { key: "totalLabour",           label: "Total Labour",      unit: "",        accent: C.amber   },
-  { key: "totalIncentives",       label: "Incentives Paid",   unit: "",        accent: "#B45309" },
-  { key: "totalLeaveDays",        label: "Leave Days",        unit: "days",    accent: C.muted   },
+  { key: "totalIncentives",       label: "Incentives Paid",  unit: "",        accent: "#B45309" },
+  { key: "avgHoursPerTechnician", label: "Avg Hours / Tech", unit: "hrs avg", accent: "#15803D" },
+  { key: "totalLeaveDays",        label: "Leave Days",       unit: "days",    accent: C.muted   },
 ];
 
 /* ─── Month helpers ──────────────────────────────────────────────── */
@@ -53,12 +68,6 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ];
 
-/**
- * currentMonthParam()
- * Returns current month as "YYYY-MM" string using local time.
- * Sent to the backend as ?month=YYYY-MM — backend builds the UTC
- * date range for the full calendar month from this.
- */
 const currentMonthParam = () => {
   const now = new Date();
   const y   = now.getFullYear();
@@ -66,12 +75,16 @@ const currentMonthParam = () => {
   return `${y}-${m}`;
 };
 
-/**
- * monthLabel("2025-06") → "June 2025"
- */
 const monthLabel = (param) => {
   const [y, m] = param.split("-").map(Number);
   return `${MONTH_NAMES[m - 1]} ${y}`;
+};
+
+/* ─── Format helpers ─────────────────────────────────────────────── */
+const fmtStat = (key, v) => {
+  if (key === "totalLabour" || key === "totalIncentives")
+    return `₹${Number(v).toLocaleString("en-IN")}`;
+  return Number(v).toLocaleString("en-IN");
 };
 
 /* ─── Stat card ──────────────────────────────────────────────────── */
@@ -82,7 +95,8 @@ function StatCard({ label, value, unit, accent }) {
       padding: "20px 18px 16px",
       display: "flex",
       flexDirection: "column",
-      borderLeft: `3px solid ${accent}`,
+      border: `1px solid ${C.border}`,   /* full card border */
+      borderLeft: `3px solid ${accent}`, /* accent override on left */
     }}>
       <div style={{
         fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
@@ -104,35 +118,26 @@ function StatCard({ label, value, unit, accent }) {
   );
 }
 
-/* ─── NAFROK loader ──────────────────────────────────────────────── */
-function NafrokLoader({ label }) {
+/* ─── Skeleton loader ────────────────────────────────────────────────
+ * Replaces the old "Powered by NAFROK" branded loader.
+ * Shimmer cards mirror the exact stat grid layout the admin is about
+ * to see — so the wait reads as "content loading" not "nothing here".
+ * Psychological effect: layout is already familiar before data arrives.
+ ─────────────────────────────────────────────────────────────────── */
+function BranchSkeleton() {
   return (
-    <div className="ab-nafrok-loader">
-      <div className="ab-nafrok-wordmark">
-        <div className="ab-nafrok-dot" />
-        <span className="ab-nafrok-text">Powered by NAFROK</span>
-        <div className="ab-nafrok-dot" />
+    <div className="ab-skeleton-wrap">
+      {/* 7 shimmer cards — same grid as real stat grid */}
+      <div className="ab-skeleton-stat-grid">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="ab-skeleton-card" />
+        ))}
       </div>
-      <div className="ab-nafrok-track">
-        <div className="ab-nafrok-bar" />
-      </div>
-      {label && (
-        <div style={{
-          fontFamily: "'IBM Plex Sans', sans-serif",
-          fontSize: "9px", fontWeight: "600", letterSpacing: "0.18em",
-          textTransform: "uppercase", color: C.dim,
-        }}>{label}</div>
-      )}
+      {/* Category section placeholder */}
+      <div className="ab-skeleton-section" />
     </div>
   );
 }
-
-/* ─── Format helpers ─────────────────────────────────────────────── */
-const fmtStat = (key, v) => {
-  if (key === "totalLabour" || key === "totalIncentives")
-    return `₹${Number(v).toLocaleString("en-IN")}`;
-  return Number(v).toLocaleString("en-IN");
-};
 
 /* ─── Session key for persisting selected branch ─────────────────── */
 const BRANCH_KEY = "aml_selected_branch";
@@ -145,13 +150,10 @@ export default function AdminBranchDashboard() {
   const isSuperAdmin  = user?.role === "superadmin";
   const isBranchAdmin = user?.role === "admin";
 
-  /* Current month param — computed once on mount, stable for the session.
-     A new calendar month always means a fresh page load anyway. */
   const [monthParam] = useState(currentMonthParam);
 
   const [branches, setBranches] = useState([]);
 
-  /* Restore last selected branch from sessionStorage on mount */
   const [selected, setSelected] = useState(() => {
     if (isBranchAdmin) return user?.branch || "";
     return sessionStorage.getItem(BRANCH_KEY) || "";
@@ -161,7 +163,6 @@ export default function AdminBranchDashboard() {
   const [loadingB, setLoadingB] = useState(isSuperAdmin);
   const [loadingS, setLoadingS] = useState(false);
 
-  /* Persist branch selection so navigating back restores it */
   const handleSelectBranch = (b) => {
     sessionStorage.setItem(BRANCH_KEY, b);
     setSelected(b);
@@ -175,10 +176,8 @@ export default function AdminBranchDashboard() {
         setBranches(r.data);
         const stored = sessionStorage.getItem(BRANCH_KEY);
         if (stored && r.data.includes(stored)) {
-          /* restore previously selected branch */
           setSelected(stored);
         } else if (r.data.length) {
-          /* fallback to first branch and persist it */
           sessionStorage.setItem(BRANCH_KEY, r.data[0]);
           setSelected(r.data[0]);
         }
@@ -187,7 +186,7 @@ export default function AdminBranchDashboard() {
       .finally(() => setLoadingB(false));
   }, [isSuperAdmin]);
 
-  /* fetch stats — scoped to current calendar month via ?month=YYYY-MM */
+  /* fetch stats — scoped to current calendar month */
   useEffect(() => {
     if (!selected) return;
     setLoadingS(true); setStats(null);
@@ -222,6 +221,7 @@ export default function AdminBranchDashboard() {
           }}>
             {isSuperAdmin ? "Super Admin" : "Branch Admin"}
           </div>
+
           <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
             <h1 style={{
               fontFamily: "'Barlow Condensed', sans-serif",
@@ -229,17 +229,35 @@ export default function AdminBranchDashboard() {
               letterSpacing: "0.04em", textTransform: "uppercase",
               margin: 0, lineHeight: 1,
             }}>Branch Dashboard</h1>
+
+            {/* Period badge — always visible so admin immediately knows the scope.
+                Without this, the month context is buried in the action row below the
+                stats, which the admin only sees AFTER the data loads. */}
+            <span style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "11px", color: C.muted, fontWeight: "600",
+              letterSpacing: "0.06em",
+              background: C.cardAlt,
+              border: `1px solid ${C.border}`,
+              padding: "2px 8px",
+              alignSelf: "center",
+            }}>
+              {monthLabel(monthParam)}
+            </span>
+
             {selected && !loadingS && stats && (
               <span style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: "11px", color: C.navy, fontWeight: "600",
                 letterSpacing: "0.06em", background: "#EEF2F7",
                 border: `1px solid ${C.border}`, padding: "2px 8px",
+                alignSelf: "center",
               }}>
                 {stats.technicianCount} tech{stats.technicianCount !== 1 ? "s" : ""}
               </span>
             )}
           </div>
+
           <p style={{
             fontSize: "13px", color: C.muted,
             marginTop: "6px", fontWeight: "300", fontStyle: "italic",
@@ -254,7 +272,19 @@ export default function AdminBranchDashboard() {
         {isSuperAdmin && (
           <div className="ab-a2">
             {loadingB ? (
-              <NafrokLoader label="Fetching branches…" />
+              /* Shimmer pill placeholders — same height as real pills so
+                 layout doesn't jump when branches load */
+              <div style={{ marginBottom: "28px" }}>
+                <div style={{
+                  fontSize: "9px", fontWeight: "700", letterSpacing: "0.18em",
+                  color: C.dim, textTransform: "uppercase", marginBottom: "10px",
+                }}>Select Branch</div>
+                <div className="ab-skeleton-pill-row">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="ab-skeleton-pill" />
+                  ))}
+                </div>
+              </div>
             ) : branches.length === 0 ? (
               <div style={{
                 background: C.card, border: `1px solid ${C.border}`,
@@ -272,6 +302,7 @@ export default function AdminBranchDashboard() {
                   {branches.map(b => (
                     <button
                       key={b}
+                      type="button"
                       onClick={() => handleSelectBranch(b)}
                       className={`ab-branch-pill${selected === b ? " active" : ""}`}
                     >{b}</button>
@@ -282,7 +313,9 @@ export default function AdminBranchDashboard() {
           </div>
         )}
 
-        {/* ── Branch badge — BRANCH ADMIN ONLY ── */}
+        {/* ── Branch badge — BRANCH ADMIN ONLY ──
+            Shows both branch name and month in one pill so the admin's
+            current scope is never ambiguous. */}
         {isBranchAdmin && selected && (
           <div className="ab-a2" style={{ marginBottom: "28px" }}>
             <div style={{
@@ -301,6 +334,14 @@ export default function AdminBranchDashboard() {
               }}>
                 {selected} Branch
               </span>
+              <div style={{ width: "1px", height: "14px", background: C.border, flexShrink: 0 }} />
+              <span style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: "10px", fontWeight: "600",
+                color: C.muted, letterSpacing: "0.06em",
+              }}>
+                {monthLabel(monthParam)}
+              </span>
             </div>
           </div>
         )}
@@ -308,7 +349,7 @@ export default function AdminBranchDashboard() {
         {/* ── Stats section ── */}
         {selected && (
           loadingS ? (
-            <NafrokLoader label={`Loading ${selected}…`} />
+            <BranchSkeleton />
           ) : stats ? (
             <>
               {/* Action row */}
@@ -322,10 +363,10 @@ export default function AdminBranchDashboard() {
                   textTransform: "uppercase", color: C.dim,
                 }}>
                   <div style={{ width: "3px", height: "14px", background: C.navy, flexShrink: 0 }} />
-                  {/* Month clearly labelled so admins always know the scope */}
                   Performance Metrics · {selected} · {monthLabel(monthParam)}
                 </div>
                 <button
+                  type="button"
                   className="ab-view-btn"
                   onClick={() => navigate(`/admin/branch/${encodeURIComponent(selected)}`)}
                 >
@@ -333,17 +374,19 @@ export default function AdminBranchDashboard() {
                 </button>
               </div>
 
-              {/* Stat grid */}
-              <div className="ab-a3 ab-stat-grid" style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-                gap: "1px", background: C.border,
-                border: `1px solid ${C.border}`,
-                marginBottom: "24px",
-              }}>
+              {/* Stat grid — CSS class handles columns and gap.
+                  Grid columns are deliberate (4 then 3) not auto-fill,
+                  so layout is predictable at every viewport width. */}
+              <div className="ab-a3 ab-stat-grid">
                 {STATS.map(({ key, label, unit, accent }) =>
                   stats[key] !== undefined ? (
-                    <StatCard key={key} label={label} value={fmtStat(key, stats[key])} unit={unit} accent={accent} />
+                    <StatCard
+                      key={key}
+                      label={label}
+                      value={fmtStat(key, stats[key])}
+                      unit={unit}
+                      accent={accent}
+                    />
                   ) : null
                 )}
               </div>
@@ -353,16 +396,22 @@ export default function AdminBranchDashboard() {
                 <div className="ab-a4" style={{
                   background: C.card,
                   border: `1px solid ${C.border}`,
+                  borderLeft: `3px solid ${C.navy}`,
                   padding: "24px",
                 }}>
                   <div style={{
                     display: "flex", alignItems: "center",
                     justifyContent: "space-between", marginBottom: "24px",
                   }}>
-                    <div style={{
-                      fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
-                      textTransform: "uppercase", color: C.muted,
-                    }}>Category Breakdown</div>
+                    {/* Left bar + label matches ChartCard style from AdminAnalytics */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div style={{ width: "3px", height: "14px", background: C.navy, flexShrink: 0 }} />
+                      <span style={{
+                        fontSize: "9px", fontWeight: "700", letterSpacing: "0.2em",
+                        textTransform: "uppercase", color: C.muted,
+                        fontFamily: "'IBM Plex Sans', sans-serif",
+                      }}>Category Breakdown</span>
+                    </div>
                     <div style={{
                       fontFamily: "'IBM Plex Mono', monospace",
                       fontSize: "11px", color: C.dim, fontWeight: "600",
