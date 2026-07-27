@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { useAuthStore } from "./store/authStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PoweredBy from "./components/PoweredBy";
@@ -173,6 +174,7 @@ export default function App() {
       </Routes>
 
       <PoweredBy />
+      <SpeedInsights />
     </BrowserRouter>
   );
 }
