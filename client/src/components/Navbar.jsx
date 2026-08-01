@@ -248,6 +248,30 @@ const NAV_STYLES = `
   .aml-user-role--superadmin { color: #7C3AED; }
   .aml-user-role--security   { color: #B45309; }
 
+  /* About link — small ghost link, same footprint family as Sign Out but neutral (not destructive) */
+  .aml-about-link {
+    background: transparent;
+    border: 1px solid #DDE3EE;
+    padding: 7px 11px;
+    color: #6B7A99;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+    border-radius: 0;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  .aml-about-link:hover  { border-color: #1E3A8A; color: #1E3A8A; background: #F0F4FF; }
+  .aml-about-link:active { background: #E4ECFF; }
+  .aml-about-desktop     { display: none; }
+
   .aml-signout {
     background: transparent;
     border: 1px solid #DDE3EE;
@@ -280,14 +304,14 @@ const NAV_STYLES = `
     cursor: pointer;
     border-radius: 0;
     flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
     transition: border-color 0.15s ease, background 0.15s ease;
-    -webkit-appearance: none;
   }
   .aml-burger:hover { border-color: #1E3A8A; }
   .aml-burger.open  { border-color: #1E3A8A; background: #F0F4FF; }
   .aml-burger-line {
     width: 15px; height: 1.5px; background: #374151; display: block;
-    transition: transform 0.22s ease, opacity 0.18s ease;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
   }
 
   /* ── Mobile dropdown ── */
@@ -295,9 +319,26 @@ const NAV_STYLES = `
     background: #FFFFFF;
     border-bottom: 1px solid #DDE3EE;
     overflow: hidden;
-    transition: max-height 0.28s ease, opacity 0.22s ease;
+    transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.24s ease,
+                box-shadow 0.24s ease;
   }
-  .aml-mobile-menu-inner { padding: 4px 16px 14px; display: flex; flex-direction: column; }
+  .aml-mobile-menu.open {
+    box-shadow: 0 14px 28px rgba(10,22,40,0.10);
+  }
+  .aml-mobile-menu-inner {
+    padding: 4px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(-6px);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.02s,
+                opacity 0.26s ease 0.02s;
+  }
+  .aml-mobile-menu.open .aml-mobile-menu-inner {
+    transform: translateY(0);
+    opacity: 1;
+  }
 
   .aml-mobile-section-label {
     font-size: 8px;
@@ -321,6 +362,7 @@ const NAV_STYLES = `
     color: #6B7A99;
     text-decoration: none;
     border-bottom: 1px solid #F1F5F9;
+    -webkit-tap-highlight-color: transparent;
     transition: color 0.15s ease;
   }
   .aml-mobile-link.active { color: #1E3A8A; }
@@ -345,6 +387,7 @@ const NAV_STYLES = `
     font-family: 'IBM Plex Sans', sans-serif;
     text-align: left;
     -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
     transition: color 0.15s ease;
   }
   .aml-mobile-signout:hover { color: #DC2626; }
@@ -354,6 +397,7 @@ const NAV_STYLES = `
     .aml-nav-right       { gap: 10px; }
     .aml-brand-sep       { display: block; }
     .aml-desktop-nav     { display: flex; }
+    .aml-about-desktop   { display: inline-flex; }
     .aml-signout-desktop { display: block; }
     .aml-burger          { display: none; }
     .aml-mobile-menu     { display: none !important; }
@@ -448,7 +492,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate("/");
   };
 
   const homeRoute = isSecurity
@@ -489,6 +533,7 @@ export default function Navbar() {
   };
 
   const isGroupActive = (group) => group.items?.some(i => location.pathname === i.path);
+  const isAboutActive = location.pathname === "/about";
 
   return (
     <div className="aml-nav-root" ref={menuRef}>
@@ -583,13 +628,19 @@ export default function Navbar() {
           </div>
 
           {!isAdminOrAbove && (
-            <button className="aml-signout" onClick={handleLogout}>Sign Out</button>
+            <>
+              <Link to="/about" className="aml-about-link">About</Link>
+              <button className="aml-signout" onClick={handleLogout}>Sign Out</button>
+            </>
           )}
 
           {isAdminOrAbove && (
-            <button className="aml-signout aml-signout-desktop" onClick={handleLogout}>
-              Sign Out
-            </button>
+            <>
+              <Link to="/about" className="aml-about-link aml-about-desktop">About</Link>
+              <button className="aml-signout aml-signout-desktop" onClick={handleLogout}>
+                Sign Out
+              </button>
+            </>
           )}
 
           {isAdminOrAbove && (
@@ -610,9 +661,9 @@ export default function Navbar() {
       {/* ── Mobile slide-down menu — grouped with section labels ── */}
       {isAdminOrAbove && (
         <div
-          className="aml-mobile-menu"
+          className={`aml-mobile-menu${menuOpen ? " open" : ""}`}
           style={{
-            maxHeight:     menuOpen ? "500px" : "0px",
+            maxHeight:     menuOpen ? "560px" : "0px",
             opacity:       menuOpen ? 1 : 0,
             pointerEvents: menuOpen ? "auto" : "none",
           }}
@@ -652,6 +703,11 @@ export default function Navbar() {
                 </div>
               );
             })}
+            <div className="aml-mobile-sep" />
+            <Link to="/about" className={`aml-mobile-link${isAboutActive ? " active" : ""}`}>
+              {isAboutActive && <span className="aml-mobile-active-bar" />}
+              About
+            </Link>
             <div className="aml-mobile-sep" />
             <button className="aml-mobile-signout" onClick={handleLogout}>Sign Out</button>
           </div>
