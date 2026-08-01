@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "./store/authStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PoweredBy from "./components/PoweredBy";
+import About from "./pages/About";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
@@ -49,7 +50,14 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        {/* First-time / logged-out visitors land on the About page.
+            Logged-in users are bounced to their role's home route by GuestRoute. */}
+        <Route path="/" element={<GuestRoute><About /></GuestRoute>} />
+
+        {/* About page — unguarded so the navbar "About" link also works
+            for logged-in users (technician/admin/superadmin/security).
+            GuestRoute is intentionally NOT applied here. */}
+        <Route path="/about" element={<About />} />
 
         {/* Public */}
         <Route path="/login"  element={<GuestRoute><Login /></GuestRoute>} />
