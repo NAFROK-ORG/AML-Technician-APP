@@ -1,5 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
+import { APP_LOCKED } from "../config/appLock";
+import AppLockedScreen from "./AppLockedScreen";
 
 /**
  * ProtectedRoute
@@ -9,8 +11,9 @@ import { useAuthStore } from "../store/authStore";
  *
  * Intercept order:
  *   1. No session → /login
- *   2. forcePasswordChange: true → /change-password (unless already there)
- *   3. Role mismatch → role-appropriate home
+ *   2. APP_LOCKED  → AppLockedScreen (TEMPORARY — see ../config/appLock.js)
+ *   3. forcePasswordChange: true → /change-password (unless already there)
+ *   4. Role mismatch → role-appropriate home
  *
  * forcePasswordChange guard: uses optional chaining (?.) so existing stored
  * user objects without this field (undefined) safely resolve to falsy.
@@ -22,6 +25,13 @@ export default function ProtectedRoute({ role, children }) {
 
   // No session at all → login
   if (!token || !user) return <Navigate to="/login" replace />;
+
+  // ── TEMPORARY APP LOCK ──────────────────────────────────────
+  // Blocks every authenticated page. Login itself is untouched
+  // (GuestRoute/Login.jsx never pass through here). Flip
+  // APP_LOCKED to false in ../config/appLock.js to remove.
+  if (APP_LOCKED) return <AppLockedScreen />;
+  // ─────────────────────────────────────────────────────────────
 
   // Forced password change — intercept BEFORE role check.
   // Exemption: allow through if already on /change-password (prevents redirect loop).
